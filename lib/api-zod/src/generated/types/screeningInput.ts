@@ -5,13 +5,13 @@
  * Grid Origination Intelligence Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { CreateScreeningBodyFilters } from "./createScreeningBodyFilters";
+import type { ScreeningInputFilters } from "./screeningInputFilters";
 
-export interface CreateScreeningBody {
+export interface ScreeningInput {
   name: string;
   market: string;
   assetType: string;
   objective: string;
-  filters?: CreateScreeningBodyFilters;
+  filters?: ScreeningInputFilters;
   candidateIds?: number[];
 }

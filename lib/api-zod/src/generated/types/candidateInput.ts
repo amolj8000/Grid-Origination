@@ -5,15 +5,15 @@
  * Grid Origination Intelligence Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { CreateCandidateBodyAssetType } from "./createCandidateBodyAssetType";
-import type { CreateCandidateBodyMarket } from "./createCandidateBodyMarket";
-import type { CreateCandidateBodyStatus } from "./createCandidateBodyStatus";
+import type { CandidateInputAssetType } from "./candidateInputAssetType";
+import type { CandidateInputMarket } from "./candidateInputMarket";
+import type { CandidateInputStatus } from "./candidateInputStatus";
 
-export interface CreateCandidateBody {
+export interface CandidateInput {
   name: string;
-  market: CreateCandidateBodyMarket;
-  assetType: CreateCandidateBodyAssetType;
-  status?: CreateCandidateBodyStatus;
+  market: CandidateInputMarket;
+  assetType: CandidateInputAssetType;
+  status?: CandidateInputStatus;
   capacityMw: number;
   latitude: number;
   longitude: number;

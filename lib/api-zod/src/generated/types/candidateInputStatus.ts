@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CreateCandidateBodyStatus =
-  (typeof CreateCandidateBodyStatus)[keyof typeof CreateCandidateBodyStatus];
+export type CandidateInputStatus =
+  (typeof CandidateInputStatus)[keyof typeof CandidateInputStatus];
 
-export const CreateCandidateBodyStatus = {
+export const CandidateInputStatus = {
   active: "active",
   inactive: "inactive",
   under_review: "under_review",

@@ -75,19 +75,19 @@ export interface Candidate {
   updatedAt: string;
 }
 
-export type CreateCandidateBodyMarket =
-  (typeof CreateCandidateBodyMarket)[keyof typeof CreateCandidateBodyMarket];
+export type CandidateInputMarket =
+  (typeof CandidateInputMarket)[keyof typeof CandidateInputMarket];
 
-export const CreateCandidateBodyMarket = {
+export const CandidateInputMarket = {
   ERCOT: "ERCOT",
   CAISO: "CAISO",
   PJM: "PJM",
 } as const;
 
-export type CreateCandidateBodyAssetType =
-  (typeof CreateCandidateBodyAssetType)[keyof typeof CreateCandidateBodyAssetType];
+export type CandidateInputAssetType =
+  (typeof CandidateInputAssetType)[keyof typeof CandidateInputAssetType];
 
-export const CreateCandidateBodyAssetType = {
+export const CandidateInputAssetType = {
   solar: "solar",
   wind: "wind",
   storage: "storage",
@@ -95,21 +95,21 @@ export const CreateCandidateBodyAssetType = {
   wind_storage: "wind_storage",
 } as const;
 
-export type CreateCandidateBodyStatus =
-  (typeof CreateCandidateBodyStatus)[keyof typeof CreateCandidateBodyStatus];
+export type CandidateInputStatus =
+  (typeof CandidateInputStatus)[keyof typeof CandidateInputStatus];
 
-export const CreateCandidateBodyStatus = {
+export const CandidateInputStatus = {
   active: "active",
   inactive: "inactive",
   under_review: "under_review",
   contracted: "contracted",
 } as const;
 
-export interface CreateCandidateBody {
+export interface CandidateInput {
   name: string;
-  market: CreateCandidateBodyMarket;
-  assetType: CreateCandidateBodyAssetType;
-  status?: CreateCandidateBodyStatus;
+  market: CandidateInputMarket;
+  assetType: CandidateInputAssetType;
+  status?: CandidateInputStatus;
   capacityMw: number;
   latitude: number;
   longitude: number;
@@ -145,14 +145,14 @@ export interface Screening {
   createdAt: string;
 }
 
-export type CreateScreeningBodyFilters = { [key: string]: unknown };
+export type ScreeningInputFilters = { [key: string]: unknown };
 
-export interface CreateScreeningBody {
+export interface ScreeningInput {
   name: string;
   market: string;
   assetType: string;
   objective: string;
-  filters?: CreateScreeningBodyFilters;
+  filters?: ScreeningInputFilters;
   candidateIds?: number[];
 }
 

@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CreateCandidateBodyMarket =
-  (typeof CreateCandidateBodyMarket)[keyof typeof CreateCandidateBodyMarket];
+export type CandidateInputMarket =
+  (typeof CandidateInputMarket)[keyof typeof CandidateInputMarket];
 
-export const CreateCandidateBodyMarket = {
+export const CandidateInputMarket = {
   ERCOT: "ERCOT",
   CAISO: "CAISO",
   PJM: "PJM",

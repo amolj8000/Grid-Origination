@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CreateCandidateBodyAssetType =
-  (typeof CreateCandidateBodyAssetType)[keyof typeof CreateCandidateBodyAssetType];
+export type CandidateInputAssetType =
+  (typeof CandidateInputAssetType)[keyof typeof CandidateInputAssetType];
 
-export const CreateCandidateBodyAssetType = {
+export const CandidateInputAssetType = {
   solar: "solar",
   wind: "wind",
   storage: "storage",

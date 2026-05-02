@@ -19,8 +19,7 @@ import type {
 import type {
   CaisoNodeStats,
   Candidate,
-  CreateCandidateBody,
-  CreateScreeningBody,
+  CandidateInput,
   DashboardSummary,
   ErcotNodalStats,
   ErcotNodeStats,
@@ -36,6 +35,7 @@ import type {
   QueueProject,
   QueueSummary,
   Screening,
+  ScreeningInput,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -224,14 +224,14 @@ export const getCreateCandidateUrl = () => {
 };
 
 export const createCandidate = async (
-  createCandidateBody: CreateCandidateBody,
+  candidateInput: CandidateInput,
   options?: RequestInit,
 ): Promise<Candidate> => {
   return customFetch<Candidate>(getCreateCandidateUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createCandidateBody),
+    body: JSON.stringify(candidateInput),
   });
 };
 
@@ -242,14 +242,14 @@ export const getCreateCandidateMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createCandidate>>,
     TError,
-    { data: BodyType<CreateCandidateBody> },
+    { data: BodyType<CandidateInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof createCandidate>>,
   TError,
-  { data: BodyType<CreateCandidateBody> },
+  { data: BodyType<CandidateInput> },
   TContext
 > => {
   const mutationKey = ["createCandidate"];
@@ -263,7 +263,7 @@ export const getCreateCandidateMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof createCandidate>>,
-    { data: BodyType<CreateCandidateBody> }
+    { data: BodyType<CandidateInput> }
   > = (props) => {
     const { data } = props ?? {};
 
@@ -276,7 +276,7 @@ export const getCreateCandidateMutationOptions = <
 export type CreateCandidateMutationResult = NonNullable<
   Awaited<ReturnType<typeof createCandidate>>
 >;
-export type CreateCandidateMutationBody = BodyType<CreateCandidateBody>;
+export type CreateCandidateMutationBody = BodyType<CandidateInput>;
 export type CreateCandidateMutationError = ErrorType<unknown>;
 
 /**
@@ -289,14 +289,14 @@ export const useCreateCandidate = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createCandidate>>,
     TError,
-    { data: BodyType<CreateCandidateBody> },
+    { data: BodyType<CandidateInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof createCandidate>>,
   TError,
-  { data: BodyType<CreateCandidateBody> },
+  { data: BodyType<CandidateInput> },
   TContext
 > => {
   return useMutation(getCreateCandidateMutationOptions(options));
@@ -398,14 +398,14 @@ export const getUpdateCandidateUrl = (id: number) => {
 
 export const updateCandidate = async (
   id: number,
-  createCandidateBody: CreateCandidateBody,
+  candidateInput: CandidateInput,
   options?: RequestInit,
 ): Promise<Candidate> => {
   return customFetch<Candidate>(getUpdateCandidateUrl(id), {
     ...options,
     method: "PUT",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createCandidateBody),
+    body: JSON.stringify(candidateInput),
   });
 };
 
@@ -416,14 +416,14 @@ export const getUpdateCandidateMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof updateCandidate>>,
     TError,
-    { id: number; data: BodyType<CreateCandidateBody> },
+    { id: number; data: BodyType<CandidateInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof updateCandidate>>,
   TError,
-  { id: number; data: BodyType<CreateCandidateBody> },
+  { id: number; data: BodyType<CandidateInput> },
   TContext
 > => {
   const mutationKey = ["updateCandidate"];
@@ -437,7 +437,7 @@ export const getUpdateCandidateMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof updateCandidate>>,
-    { id: number; data: BodyType<CreateCandidateBody> }
+    { id: number; data: BodyType<CandidateInput> }
   > = (props) => {
     const { id, data } = props ?? {};
 
@@ -450,7 +450,7 @@ export const getUpdateCandidateMutationOptions = <
 export type UpdateCandidateMutationResult = NonNullable<
   Awaited<ReturnType<typeof updateCandidate>>
 >;
-export type UpdateCandidateMutationBody = BodyType<CreateCandidateBody>;
+export type UpdateCandidateMutationBody = BodyType<CandidateInput>;
 export type UpdateCandidateMutationError = ErrorType<unknown>;
 
 /**
@@ -463,14 +463,14 @@ export const useUpdateCandidate = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof updateCandidate>>,
     TError,
-    { id: number; data: BodyType<CreateCandidateBody> },
+    { id: number; data: BodyType<CandidateInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof updateCandidate>>,
   TError,
-  { id: number; data: BodyType<CreateCandidateBody> },
+  { id: number; data: BodyType<CandidateInput> },
   TContext
 > => {
   return useMutation(getUpdateCandidateMutationOptions(options));
@@ -643,14 +643,14 @@ export const getCreateScreeningUrl = () => {
 };
 
 export const createScreening = async (
-  createScreeningBody: CreateScreeningBody,
+  screeningInput: ScreeningInput,
   options?: RequestInit,
 ): Promise<Screening> => {
   return customFetch<Screening>(getCreateScreeningUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createScreeningBody),
+    body: JSON.stringify(screeningInput),
   });
 };
 
@@ -661,14 +661,14 @@ export const getCreateScreeningMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createScreening>>,
     TError,
-    { data: BodyType<CreateScreeningBody> },
+    { data: BodyType<ScreeningInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof createScreening>>,
   TError,
-  { data: BodyType<CreateScreeningBody> },
+  { data: BodyType<ScreeningInput> },
   TContext
 > => {
   const mutationKey = ["createScreening"];
@@ -682,7 +682,7 @@ export const getCreateScreeningMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof createScreening>>,
-    { data: BodyType<CreateScreeningBody> }
+    { data: BodyType<ScreeningInput> }
   > = (props) => {
     const { data } = props ?? {};
 
@@ -695,7 +695,7 @@ export const getCreateScreeningMutationOptions = <
 export type CreateScreeningMutationResult = NonNullable<
   Awaited<ReturnType<typeof createScreening>>
 >;
-export type CreateScreeningMutationBody = BodyType<CreateScreeningBody>;
+export type CreateScreeningMutationBody = BodyType<ScreeningInput>;
 export type CreateScreeningMutationError = ErrorType<unknown>;
 
 /**
@@ -708,14 +708,14 @@ export const useCreateScreening = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof createScreening>>,
     TError,
-    { data: BodyType<CreateScreeningBody> },
+    { data: BodyType<ScreeningInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof createScreening>>,
   TError,
-  { data: BodyType<CreateScreeningBody> },
+  { data: BodyType<ScreeningInput> },
   TContext
 > => {
   return useMutation(getCreateScreeningMutationOptions(options));
