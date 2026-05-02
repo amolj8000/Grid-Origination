@@ -512,7 +512,7 @@ components:
         - createdAt
         - updatedAt
 
-    CreateCandidateBody:
+    CandidateInput:
       type: object
       properties:
         name:
