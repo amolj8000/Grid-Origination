@@ -373,6 +373,49 @@ export const ListCaisoNodeStatsResponse = zod.array(
 );
 
 /**
+ * @summary List PJM hub/zone node stats
+ */
+export const ListPjmNodeStatsQueryParams = zod.object({
+  node: zod
+    .enum([
+      "Western Hub",
+      "Eastern Hub",
+      "AEP-Dayton Hub",
+      "NI Hub",
+      "PSEG",
+      "PPL",
+      "DOM",
+      "BGE",
+    ])
+    .optional(),
+  year: zod.coerce.number().optional(),
+  month: zod.coerce.number().optional(),
+});
+
+export const ListPjmNodeStatsResponseItem = zod.object({
+  id: zod.number(),
+  node: zod.enum([
+    "Western Hub",
+    "Eastern Hub",
+    "AEP-Dayton Hub",
+    "NI Hub",
+    "PSEG",
+    "PPL",
+    "DOM",
+    "BGE",
+  ]),
+  year: zod.number(),
+  month: zod.number(),
+  avgDaPrice: zod.number(),
+  avgRtPrice: zod.number().optional(),
+  volatility: zod.number().optional(),
+  negPricePercent: zod.number().optional(),
+  onPeakAvg: zod.number().optional(),
+  offPeakAvg: zod.number().optional(),
+});
+export const ListPjmNodeStatsResponse = zod.array(ListPjmNodeStatsResponseItem);
+
+/**
  * @summary List interconnection queue projects
  */
 export const listQueueProjectsQueryLimitDefault = 200;

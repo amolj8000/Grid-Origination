@@ -217,6 +217,33 @@ export interface CaisoNodeStats {
   offPeakAvg?: number;
 }
 
+export type PjmNodeStatsNode =
+  (typeof PjmNodeStatsNode)[keyof typeof PjmNodeStatsNode];
+
+export const PjmNodeStatsNode = {
+  Western_Hub: "Western Hub",
+  Eastern_Hub: "Eastern Hub",
+  "AEP-Dayton_Hub": "AEP-Dayton Hub",
+  NI_Hub: "NI Hub",
+  PSEG: "PSEG",
+  PPL: "PPL",
+  DOM: "DOM",
+  BGE: "BGE",
+} as const;
+
+export interface PjmNodeStats {
+  id: number;
+  node: PjmNodeStatsNode;
+  year: number;
+  month: number;
+  avgDaPrice: number;
+  avgRtPrice?: number;
+  volatility?: number;
+  negPricePercent?: number;
+  onPeakAvg?: number;
+  offPeakAvg?: number;
+}
+
 export type QueueProjectMarket =
   (typeof QueueProjectMarket)[keyof typeof QueueProjectMarket];
 
@@ -355,6 +382,26 @@ export const ListCaisoNodeStatsNode = {
   NP15: "NP15",
   SP15: "SP15",
   ZP26: "ZP26",
+} as const;
+
+export type ListPjmNodeStatsParams = {
+  node?: ListPjmNodeStatsNode;
+  year?: number;
+  month?: number;
+};
+
+export type ListPjmNodeStatsNode =
+  (typeof ListPjmNodeStatsNode)[keyof typeof ListPjmNodeStatsNode];
+
+export const ListPjmNodeStatsNode = {
+  Western_Hub: "Western Hub",
+  Eastern_Hub: "Eastern Hub",
+  "AEP-Dayton_Hub": "AEP-Dayton Hub",
+  NI_Hub: "NI Hub",
+  PSEG: "PSEG",
+  PPL: "PPL",
+  DOM: "DOM",
+  BGE: "BGE",
 } as const;
 
 export type ListQueueProjectsParams = {

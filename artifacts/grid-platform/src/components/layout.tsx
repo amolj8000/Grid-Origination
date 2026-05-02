@@ -25,6 +25,7 @@ const sidebarNavItems = [
   { title: "Map Workspace", href: "/map", icon: MapIcon },
   { title: "ERCOT Historical", href: "/ercot", icon: Activity },
   { title: "CAISO Historical", href: "/caiso", icon: Zap },
+  { title: "PJM Historical", href: "/pjm", icon: Activity },
   { title: "Nodal Analysis", href: "/nodal", icon: Layers },
   { title: "Interconnection Queue", href: "/queue", icon: Database },
   { title: "Q&A Copilot", href: "/qa", icon: MessageSquare },

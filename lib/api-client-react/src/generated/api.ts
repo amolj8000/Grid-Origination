@@ -30,8 +30,10 @@ import type {
   ListCandidatesParams,
   ListErcotNodalStatsParams,
   ListErcotNodeStatsParams,
+  ListPjmNodeStatsParams,
   ListQueueProjectsParams,
   MarketBreakdown,
+  PjmNodeStats,
   QueueProject,
   QueueSummary,
   Screening,
@@ -1178,6 +1180,103 @@ export function useListCaisoNodeStats<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListCaisoNodeStatsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List PJM hub/zone node stats
+ */
+export const getListPjmNodeStatsUrl = (params?: ListPjmNodeStatsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/pjm-node-stats?${stringifiedParams}`
+    : `/api/pjm-node-stats`;
+};
+
+export const listPjmNodeStats = async (
+  params?: ListPjmNodeStatsParams,
+  options?: RequestInit,
+): Promise<PjmNodeStats[]> => {
+  return customFetch<PjmNodeStats[]>(getListPjmNodeStatsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPjmNodeStatsQueryKey = (
+  params?: ListPjmNodeStatsParams,
+) => {
+  return [`/api/pjm-node-stats`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPjmNodeStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPjmNodeStats>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPjmNodeStatsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPjmNodeStats>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPjmNodeStatsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPjmNodeStats>>
+  > = ({ signal }) => listPjmNodeStats(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPjmNodeStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPjmNodeStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPjmNodeStats>>
+>;
+export type ListPjmNodeStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List PJM hub/zone node stats
+ */
+
+export function useListPjmNodeStats<
+  TData = Awaited<ReturnType<typeof listPjmNodeStats>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPjmNodeStatsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPjmNodeStats>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPjmNodeStatsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

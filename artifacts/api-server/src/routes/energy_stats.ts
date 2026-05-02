@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { db, ercotNodeStatsTable, ercotNodalStatsTable, caisoNodeStatsTable } from "@workspace/db";
+import { db, ercotNodeStatsTable, ercotNodalStatsTable, caisoNodeStatsTable, pjmNodeStatsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import {
   ListErcotNodeStatsQueryParams,
   ListErcotNodalStatsQueryParams,
   ListCaisoNodeStatsQueryParams,
+  ListPjmNodeStatsQueryParams,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -108,6 +109,39 @@ router.get("/caiso-node-stats", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "listCaisoNodeStats error");
     res.status(500).json({ error: "internal_error", message: "Failed to list CAISO node stats" });
+  }
+});
+
+// PJM Node Stats
+router.get("/pjm-node-stats", async (req, res) => {
+  try {
+    const parsed = ListPjmNodeStatsQueryParams.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid query", message: parsed.error.message });
+      return;
+    }
+    const { node, year, month } = parsed.data;
+    const conditions = [];
+    if (node) conditions.push(eq(pjmNodeStatsTable.node, node));
+    if (year !== undefined) conditions.push(eq(pjmNodeStatsTable.year, year));
+    if (month !== undefined) conditions.push(eq(pjmNodeStatsTable.month, month));
+
+    const rows = await db.select().from(pjmNodeStatsTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(pjmNodeStatsTable.year, pjmNodeStatsTable.month);
+
+    res.json(rows.map(r => ({
+      ...r,
+      avgDaPrice: Number(r.avgDaPrice),
+      avgRtPrice: r.avgRtPrice ? Number(r.avgRtPrice) : null,
+      volatility: r.volatility ? Number(r.volatility) : null,
+      negPricePercent: r.negPricePercent ? Number(r.negPricePercent) : null,
+      onPeakAvg: r.onPeakAvg ? Number(r.onPeakAvg) : null,
+      offPeakAvg: r.offPeakAvg ? Number(r.offPeakAvg) : null,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "listPjmNodeStats error");
+    res.status(500).json({ error: "internal_error", message: "Failed to list PJM node stats" });
   }
 });
 

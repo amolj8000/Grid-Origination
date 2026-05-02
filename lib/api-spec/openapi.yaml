@@ -20,6 +20,8 @@ tags:
     description: ERCOT resource nodal stats
   - name: caiso-node-stats
     description: CAISO node stats
+  - name: pjm-node-stats
+    description: PJM hub/zone node stats
   - name: queue-projects
     description: Interconnection queue projects
   - name: dashboard
@@ -314,6 +316,35 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CaisoNodeStats"
+
+  /pjm-node-stats:
+    get:
+      operationId: listPjmNodeStats
+      tags: [pjm-node-stats]
+      summary: List PJM hub/zone node stats
+      parameters:
+        - name: node
+          in: query
+          schema:
+            type: string
+            enum: [Western Hub, Eastern Hub, AEP-Dayton Hub, NI Hub, PSEG, PPL, DOM, BGE]
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: PJM node stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PjmNodeStats"
 
   /queue-projects:
     get:
@@ -705,6 +736,32 @@ components:
         offPeakAvg:
           type: number
       required: [id, node, year, month, avgDaPrice, avgRtPrice]
+
+    PjmNodeStats:
+      type: object
+      properties:
+        id:
+          type: integer
+        node:
+          type: string
+          enum: [Western Hub, Eastern Hub, AEP-Dayton Hub, NI Hub, PSEG, PPL, DOM, BGE]
+        year:
+          type: integer
+        month:
+          type: integer
+        avgDaPrice:
+          type: number
+        avgRtPrice:
+          type: number
+        volatility:
+          type: number
+        negPricePercent:
+          type: number
+        onPeakAvg:
+          type: number
+        offPeakAvg:
+          type: number
+      required: [id, node, year, month, avgDaPrice]
 
     QueueProject:
       type: object
