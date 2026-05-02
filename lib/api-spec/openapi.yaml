@@ -96,7 +96,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCandidateBody"
+              $ref: "#/components/schemas/CandidateInput"
       responses:
         "201":
           description: Created candidate
@@ -144,7 +144,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCandidateBody"
+              $ref: "#/components/schemas/CandidateInput"
       responses:
         "200":
           description: Updated candidate
@@ -189,7 +189,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateScreeningBody"
+              $ref: "#/components/schemas/ScreeningInput"
       responses:
         "201":
           description: Created screening
@@ -599,7 +599,7 @@ components:
           format: date-time
       required: [id, name, market, assetType, objective, createdAt]
 
-    CreateScreeningBody:
+    ScreeningInput:
       type: object
       properties:
         name:
