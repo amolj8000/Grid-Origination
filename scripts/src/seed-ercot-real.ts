@@ -35,15 +35,29 @@ const DAM_IDS: Record<number, string> = {
 function downloadBuffer(url: string, redirects = 0): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error("Too many redirects"));
-    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    let settled = false;
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res): void => {
       if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
-        return downloadBuffer(res.headers.location, redirects + 1).then(resolve).catch(reject);
+        void downloadBuffer(res.headers.location, redirects + 1).then(resolve).catch(reject);
+        return;
       }
       const chunks: Buffer[] = [];
       res.on("data", (c: Buffer) => chunks.push(c));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
-    }).on("error", reject);
+      res.on("end", () => {
+        if (settled) return;
+        settled = true;
+        resolve(Buffer.concat(chunks));
+      });
+      res.on("error", (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      });
+    }).on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
 }
 
@@ -113,8 +127,6 @@ function isOnPeak(hour: number, dow: number) {
   return dow >= 1 && dow <= 5 && hour >= 7 && hour <= 22;
 }
 
-function heStrToHour(s: string) { return parseInt(s.split(":")[0], 10); }
-
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function parseRtmSheet(ws: XLSX.WorkSheet, map: Map<Key, Agg>) {
@@ -143,12 +155,11 @@ function parseDamSheet(ws: XLSX.WorkSheet, map: Map<Key, Agg>) {
     const r = rows[i];
     if (!r || r.length < 5) continue;
     const dateStr = r[0] as string;
-    const heStr = String(r[1]);
     const flag = r[2] as string;
     const sp = r[3] as string;
     const price = Number(r[4]);
     if (flag === "Y" || !sp || isNaN(price) || !dateStr?.includes("/")) continue;
-    const { year, month, dow } = parseDate(dateStr);
+    const { year, month } = parseDate(dateStr);
     const k = key(sp, year, month);
     const agg = ensureAgg(map, k);
     agg.da.push(price);

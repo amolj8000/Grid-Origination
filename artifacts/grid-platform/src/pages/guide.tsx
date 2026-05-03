@@ -374,14 +374,13 @@ export default function PlatformGuide() {
       <Card className="border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Data Status & Roadmap</CardTitle>
-          <CardDescription className="text-xs">What's real vs. modeled, and what's coming next</CardDescription>
+          <CardDescription className="text-xs">What’s modeled now and what’s coming next</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
             {[
-              { label: "ERCOT Hub/Zone Prices", status: "partial", detail: "Real: Jun 2024 – Apr 2025 (CDR scraped). Synthetic: 2022–May 2024, May 2025+. All 15 hubs/zones." },
-              { label: "ERCOT Resource Nodes (~947)", status: "modeled", detail: "Synthetic basis model (17 settlement points seeded). Real data needs ERCOT API client_id." },
-              { label: "CAISO Prices", status: "modeled", detail: "NP15/SP15/ZP26 modeled from EIA benchmarks 2022–2026." },
+              { label: "ERCOT Resource Nodes (~947)", status: "modeled", detail: "Synthetic basis model (17 settlement points seeded). Real resource-node data still needs ERCOT API client_id." },
+              { label: "CAISO Prices", status: "modeled", detail: "ZP26 and intraday/RT node coverage are still modeled. SP15/NP15 historical DA is real." },
               { label: "PJM Hub/Zone Prices", status: "modeled", detail: "8 hubs/zones modeled from published PJM/EIA benchmarks 2022–2026." },
               { label: "Interconnection Queue", status: "seeded", detail: "ERCOT/CAISO/PJM queue data seeded. Real API pull planned." },
               { label: "EIA 860 Project Database", status: "seeded", detail: "3,875 operable generators >1 MW from EIA Form 860 2024. Filtered by ERCO/CISO/PJM balancing authority codes." },

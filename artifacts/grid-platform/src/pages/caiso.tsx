@@ -37,10 +37,9 @@ export default function CaisoHistorical() {
   const [compareYear, setCompareYear] = useState<number>(2022);
   const [showCompare, setShowCompare] = useState(false);
 
-  const { data: stats, isLoading } = useListCaisoNodeStats({ node, year });
+  const { data: stats, isLoading } = useListCaisoNodeStats({ node: node as "NP15" | "SP15" | "ZP26", year });
   const { data: compareStats } = useListCaisoNodeStats(
-    { node, year: compareYear },
-    { enabled: showCompare }
+    { node: node as "NP15" | "SP15" | "ZP26", year: compareYear }
   );
 
   const chartData = stats?.sort((a, b) => a.month - b.month).map(s => {

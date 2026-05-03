@@ -40,10 +40,7 @@ export default function ErcotHistorical() {
   const [showCompare, setShowCompare] = useState(false);
 
   const { data: stats, isLoading } = useListErcotNodeStats({ node, year });
-  const { data: compareStats } = useListErcotNodeStats(
-    { node, year: compareYear },
-    { enabled: showCompare }
-  );
+  const { data: compareStats } = useListErcotNodeStats({ node, year: compareYear });
 
   const chartData = stats?.sort((a, b) => a.month - b.month).map(s => {
     const comp = compareStats?.find(c => c.month === s.month);

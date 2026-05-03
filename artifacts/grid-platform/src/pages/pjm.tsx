@@ -85,14 +85,8 @@ export default function PjmHistorical() {
   const [showZoneCompare, setShowZoneCompare] = useState(false);
 
   const { data: stats, isLoading } = useListPjmNodeStats({ node, year });
-  const { data: compareStats } = useListPjmNodeStats(
-    { node, year: compareYear },
-    { enabled: showCompare }
-  );
-  const { data: compareZoneStats } = useListPjmNodeStats(
-    { node: compareNode, year },
-    { enabled: showZoneCompare }
-  );
+  const { data: compareStats } = useListPjmNodeStats({ node, year: compareYear });
+  const { data: compareZoneStats } = useListPjmNodeStats({ node: compareNode, year });
 
   const chartData = stats?.sort((a, b) => a.month - b.month).map(s => {
     const comp = compareStats?.find(c => c.month === s.month);

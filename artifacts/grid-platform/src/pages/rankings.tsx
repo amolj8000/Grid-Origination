@@ -242,6 +242,8 @@ export default function Rankings() {
         market: newMarket as any,
         assetType: newAssetType as any,
         capacityMw: parseFloat(newCapacity),
+        latitude: 0,
+        longitude: 0,
         state: newState || undefined,
         county: newCounty || undefined,
         status: "active" as any,
@@ -300,7 +302,7 @@ export default function Rankings() {
             <span className="font-medium text-foreground">Scoring methodology: </span>
             Curtailment (25%) · Congestion (20%) · Basis Risk (20%) · Price (15%) · Capacity (12%) · Asset Age (8%).{" "}
             ERCOT uses generation-type proxy nodes (WTG/SUN for wind/solar). CAISO uses NP15/SP15/ZP26 by latitude.
-            PJM uses hub/zone by state. Data: ERCOT nodal 2023–2025 (real); CAISO/PJM 2023–2025 (modeled).
+            PJM uses hub/zone by state. Data: ERCOT hub/zone and CAISO SP15/NP15 DA are real; PJM is still modeled.
           </span>
         </div>
 

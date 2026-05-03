@@ -50,15 +50,29 @@ function oasisUrl(node: string, marketRunId: string, year: number, month: number
 function downloadBuffer(url: string, redirects = 0): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error("Too many redirects"));
-    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    let settled = false;
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res): void => {
       if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
-        return downloadBuffer(res.headers.location, redirects + 1).then(resolve).catch(reject);
+        void downloadBuffer(res.headers.location, redirects + 1).then(resolve).catch(reject);
+        return;
       }
       const chunks: Buffer[] = [];
       res.on("data", (c: Buffer) => chunks.push(c));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
-    }).on("error", reject);
+      res.on("end", () => {
+        if (settled) return;
+        settled = true;
+        resolve(Buffer.concat(chunks));
+      });
+      res.on("error", (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      });
+    }).on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
 }
 
