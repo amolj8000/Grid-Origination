@@ -5,7 +5,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Layers, Zap, Server } from "lucide-react";
+import { Loader2, Layers, Zap, Server, ChevronDown, Check } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -53,21 +53,30 @@ const FUEL_LABELS: Record<string, string> = {
   hybrid:        "Hybrid (Solar+Storage)",
 };
 
-// ── Transmission voltage color scheme (OpenGridWorks style) ──────────────────
+// ── Transmission voltage bands — matching OpenGridWorks categories ────────────
 const VOLTAGE_BANDS = [
-  { min: 735, label: "735kV+",     color: "#ef4444", weight: 3.5 },
-  { min: 500, label: "500–734kV",  color: "#f97316", weight: 2.5 },
-  { min: 345, label: "345–499kV",  color: "#f59e0b", weight: 2.0 },
-  { min: 230, label: "230–344kV",  color: "#a78bfa", weight: 1.5 },
+  { min: 735, max: Infinity, label: "735kV+",     color: "#ef4444", weight: 3.5 },
+  { min: 500, max: 734,      label: "500–734kV",  color: "#f97316", weight: 2.5 },
+  { min: 345, max: 499,      label: "345–499kV",  color: "#f59e0b", weight: 2.0 },
+  { min: 230, max: 344,      label: "230–344kV",  color: "#a78bfa", weight: 1.5 },
+  { min: 100, max: 229,      label: "100–229kV",  color: "#3b82f6", weight: 1.0 },
+  { min: 31,  max: 99,       label: "31–99kV",    color: "#22c55e", weight: 0.7 },
+  { min: 0,   max: 30,       label: "<31kV",      color: "#6b7280", weight: 0.5 },
 ];
 
-function getVoltageStyle(voltage: number) {
+const VOLTAGE_BAND_LABELS = VOLTAGE_BANDS.map(b => b.label);
+
+function getVoltageBandLabel(voltage: number): string {
   for (const band of VOLTAGE_BANDS) {
-    if (voltage >= band.min) {
-      return { color: band.color, weight: band.weight };
-    }
+    if (voltage >= band.min && voltage <= band.max) return band.label;
   }
-  return { color: "#6b7280", weight: 1 };
+  return "<31kV";
+}
+
+function getVoltageStyle(voltage: number) {
+  const label = getVoltageBandLabel(voltage);
+  const band = VOLTAGE_BANDS.find(b => b.label === label) ?? VOLTAGE_BANDS[VOLTAGE_BANDS.length - 1];
+  return { color: band.color, weight: band.weight };
 }
 
 // ── Marker factories ─────────────────────────────────────────────────────────
@@ -101,15 +110,15 @@ const createSquare = (size = 11) =>
     iconAnchor: [size / 2, size / 2],
   });
 
-// ── HIFLD fetch config ───────────────────────────────────────────────────────
+// ── HIFLD fetch config — 100kV+ to cover all OpenGridWorks voltage bands ─────
 const HIFLD_BASE =
   "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0/query";
 const HIFLD_PARAMS =
-  "where=VOLTAGE%3E%3D230+AND+STATUS%3D%27IN+SERVICE%27" +
+  "where=VOLTAGE%3E%3D100+AND+STATUS%3D%27IN+SERVICE%27" +
   "&outFields=VOLTAGE%2CTYPE" +
   "&f=geojson" +
   "&resultRecordCount=2000";
-const HIFLD_PAGES = [0, 2000, 4000, 6000, 8000]; // ≥230kV US total ~8 108
+const HIFLD_PAGES = [0, 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000]; // ≥100kV
 
 // ── OpenStreetMap datacenter fetch config ─────────────────────────────────
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -130,14 +139,114 @@ const MARKETS = ["all", "ERCOT", "CAISO", "PJM"];
 const EIA_LEGEND    = ["solar", "wind", "storage", "natural_gas", "nuclear", "hydro"] as const;
 const QUEUE_LEGEND  = ["solar", "wind", "offshore_wind", "storage", "natural_gas", "hybrid", "geothermal"] as const;
 
+// All fuel types (OpenGridWorks style)
+const ALL_FUELS = [
+  "solar", "wind", "offshore_wind", "storage", "pumped_storage",
+  "hydro", "nuclear", "natural_gas", "coal", "oil", "geothermal", "biomass", "other",
+] as const;
+const ALL_FUEL_LABELS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(FUEL_LABELS)),
+  pumped_storage: "Pumped Storage",
+  coal: "Coal",
+  oil: "Oil",
+  other: "Other",
+};
+
+// ── MultiSelect dropdown component ───────────────────────────────────────────
+function MultiSelect({
+  options,
+  selected,
+  onToggle,
+  placeholder,
+  renderLabel,
+}: {
+  options: readonly string[];
+  selected: Set<string>;
+  onToggle: (v: string) => void;
+  placeholder: string;
+  renderLabel?: (v: string) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const count = selected.size;
+
+  useEffect(() => {
+    function onOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="h-8 w-full text-xs bg-background border border-input rounded-md px-3 flex items-center justify-between gap-1.5 hover:bg-accent/50 transition-colors"
+      >
+        <span className={`truncate ${count === 0 ? "text-muted-foreground" : "text-foreground"}`}>
+          {count === 0 ? placeholder : `${count} selected`}
+        </span>
+        <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 left-0 right-0 bg-popover border border-border rounded-md shadow-lg z-[9999] max-h-56 overflow-y-auto">
+          {count > 0 && (
+            <button
+              type="button"
+              onClick={() => options.forEach(o => selected.has(o) && onToggle(o))}
+              className="w-full text-left text-xs px-3 py-1.5 text-primary hover:bg-accent border-b border-border"
+            >
+              Clear all
+            </button>
+          )}
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onToggle(opt)}
+              className="flex items-center gap-2 px-3 py-1.5 w-full text-xs hover:bg-accent text-left"
+            >
+              <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${selected.has(opt) ? "bg-primary border-primary" : "border-input"}`}>
+                {selected.has(opt) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+              </div>
+              {renderLabel ? renderLabel(opt) : opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 export default function MapWorkspace() {
   const [showEia860,       setShowEia860]       = useState(true);
   const [showQueue,        setShowQueue]        = useState(true);
   const [showTransmission, setShowTransmission] = useState(false);
-  const [fuelFilter,       setFuelFilter]       = useState("all");
+  // Multi-select fuel filter — empty set = show all
+  const [fuelFilters,      setFuelFilters]      = useState<Set<string>>(new Set());
+  // Multi-select voltage band filter — empty set = show all bands
+  const [txVoltageFilters, setTxVoltageFilters] = useState<Set<string>>(new Set());
   const [marketFilter,     setMarketFilter]     = useState("all");
   const [mwPos,            setMwPos]            = useState<[number, number]>([0, 100]);
+
+  function toggleFuel(v: string) {
+    setFuelFilters(prev => {
+      const next = new Set(prev);
+      next.has(v) ? next.delete(v) : next.add(v);
+      return next;
+    });
+  }
+
+  function toggleVoltage(v: string) {
+    setTxVoltageFilters(prev => {
+      const next = new Set(prev);
+      next.has(v) ? next.delete(v) : next.add(v);
+      return next;
+    });
+  }
   const minMw = posToMw(mwPos[0]);
   const maxMw = posToMw(mwPos[1]);
 
@@ -209,7 +318,7 @@ export default function MapWorkspace() {
       )
     )
       .then(pages => {
-        const features = pages.flatMap(p => (p.features ?? []).filter(f => f.geometry != null));
+        const features = pages.flatMap((p: FeatureCollection) => (p.features ?? []).filter((f: Feature) => f.geometry != null));
         setTxLines({ type: "FeatureCollection", features });
         setTxLoading(false);
       })
@@ -226,22 +335,36 @@ export default function MapWorkspace() {
     if (!candidates) return [];
     return candidates.filter(c => {
       if (!c.latitude || !c.longitude) return false;
-      if (fuelFilter !== "all" && c.assetType !== fuelFilter) return false;
+      if (fuelFilters.size > 0 && !fuelFilters.has(c.assetType)) return false;
       if (marketFilter !== "all" && c.market !== marketFilter) return false;
       if (c.capacityMw < minMw || c.capacityMw > maxMw) return false;
       return true;
     });
-  }, [candidates, fuelFilter, marketFilter, minMw, maxMw]);
+  }, [candidates, fuelFilters, marketFilter, minMw, maxMw]);
 
   const filteredQueue = useMemo(() => {
     if (!queueProjects) return [];
     return queueProjects.filter(q => {
       if (!q.latitude || !q.longitude) return false;
       if (marketFilter !== "all" && q.market !== marketFilter) return false;
-      if (fuelFilter !== "all" && q.fuelType !== fuelFilter) return false;
+      if (fuelFilters.size > 0 && !fuelFilters.has(q.fuelType)) return false;
       return true;
     });
-  }, [queueProjects, marketFilter, fuelFilter]);
+  }, [queueProjects, marketFilter, fuelFilters]);
+
+  // Filter transmission lines by selected voltage bands (empty = show all)
+  const filteredTxLines = useMemo((): FeatureCollection | null => {
+    if (!txLines) return null;
+    if (txVoltageFilters.size === 0) return txLines;
+    return {
+      type: "FeatureCollection",
+      features: txLines.features.filter((f: Feature) => {
+        const v = f.properties?.VOLTAGE ?? 0;
+        const label = getVoltageBandLabel(v);
+        return txVoltageFilters.has(label);
+      }),
+    };
+  }, [txLines, txVoltageFilters]);
 
   const isLoading = isLoadingCandidates || isLoadingQueue;
 
@@ -289,10 +412,10 @@ export default function MapWorkspace() {
           />
 
           {/* ── Transmission Lines (bottom layer) ── */}
-          {showTransmission && txLines && (
+          {showTransmission && filteredTxLines && (
             <GeoJSON
-              key="transmission"
-              data={txLines}
+              key={`transmission-${txVoltageFilters.size}`}
+              data={filteredTxLines}
               style={txStyle}
               interactive={false}
             />
@@ -385,10 +508,10 @@ export default function MapWorkspace() {
                         <span className="font-medium">{q.studyGroupPhase}</span>
                       </div>
                     )}
-                    {q.interconnectionPoint && (
+                    {q.interconnectionNode && (
                       <div className="col-span-2">
                         <span className="text-muted-foreground">Interconnect Point</span><br />
-                        <span className="font-medium">{q.interconnectionPoint}</span>
+                        <span className="font-medium">{q.interconnectionNode}</span>
                       </div>
                     )}
                   </div>
@@ -472,24 +595,40 @@ export default function MapWorkspace() {
             </div>
 
             {/* Transmission lines */}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-amber-400" />
-                  Transmission Lines
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {txLines
-                    ? `${txLines.features.length.toLocaleString()} lines ≥230kV`
-                    : txLoading
-                    ? "Loading from HIFLD…"
-                    : "≥230kV backbone, US-wide"}
-                </p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-amber-400" />
+                    Transmission Lines
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {txLines
+                      ? `${(filteredTxLines?.features.length ?? 0).toLocaleString()} / ${txLines.features.length.toLocaleString()} lines`
+                      : txLoading
+                      ? "Loading from HIFLD…"
+                      : "≥100kV backbone, US-wide"}
+                  </p>
+                </div>
+                <Switch checked={showTransmission} onCheckedChange={setShowTransmission} />
               </div>
-              <Switch
-                checked={showTransmission}
-                onCheckedChange={setShowTransmission}
-              />
+              {showTransmission && (
+                <MultiSelect
+                  options={VOLTAGE_BAND_LABELS}
+                  selected={txVoltageFilters}
+                  onToggle={toggleVoltage}
+                  placeholder="All voltage bands"
+                  renderLabel={label => {
+                    const band = VOLTAGE_BANDS.find(b => b.label === label)!;
+                    return (
+                      <span className="flex items-center gap-2">
+                        <span className="shrink-0 rounded" style={{ display: "inline-block", width: 18, height: band.weight + 1, backgroundColor: band.color, opacity: 0.9 }} />
+                        {label}
+                      </span>
+                    );
+                  }}
+                />
+              )}
             </div>
 
             {/* Data Centers */}
@@ -525,22 +664,18 @@ export default function MapWorkspace() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={fuelFilter} onValueChange={setFuelFilter}>
-                <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="All Fuel Types" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-xs">All Fuel Types</SelectItem>
-                  <SelectItem value="solar" className="text-xs">Solar</SelectItem>
-                  <SelectItem value="wind" className="text-xs">Wind</SelectItem>
-                  <SelectItem value="offshore_wind" className="text-xs">Offshore Wind</SelectItem>
-                  <SelectItem value="storage" className="text-xs">Battery Storage</SelectItem>
-                  <SelectItem value="natural_gas" className="text-xs">Natural Gas</SelectItem>
-                  <SelectItem value="nuclear" className="text-xs">Nuclear</SelectItem>
-                  <SelectItem value="hydro" className="text-xs">Hydro</SelectItem>
-                  <SelectItem value="hybrid" className="text-xs">Hybrid</SelectItem>
-                  <SelectItem value="geothermal" className="text-xs">Geothermal</SelectItem>
-                  <SelectItem value="biomass" className="text-xs">Biomass</SelectItem>
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={ALL_FUELS}
+                selected={fuelFilters}
+                onToggle={toggleFuel}
+                placeholder="All Fuel Types"
+                renderLabel={v => (
+                  <span className="flex items-center gap-2">
+                    <span className="shrink-0 rounded-full border border-white/20" style={{ display: "inline-block", width: 8, height: 8, backgroundColor: FUEL_COLORS[v] ?? "#94a3b8" }} />
+                    {ALL_FUEL_LABELS[v] ?? v}
+                  </span>
+                )}
+              />
             </div>
 
             {/* MW capacity slider */}
@@ -601,16 +736,19 @@ export default function MapWorkspace() {
             {showTransmission && (
               <>
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-1.5 pt-2 border-t border-border">
-                  Transmission Lines <span className="font-normal normal-case">(HIFLD)</span>
+                  Transmission <span className="font-normal normal-case">(HIFLD ≥100kV)</span>
                 </div>
-                {VOLTAGE_BANDS.map(band => (
-                  <div key={band.label} className="flex items-center gap-2 text-xs">
-                    <div className="shrink-0 rounded" style={{ width: 18, height: band.weight + 1, backgroundColor: band.color, opacity: 0.85 }} />
-                    <span>{band.label}</span>
-                  </div>
-                ))}
+                {VOLTAGE_BANDS.map(band => {
+                  const active = txVoltageFilters.size === 0 || txVoltageFilters.has(band.label);
+                  return (
+                    <div key={band.label} className={`flex items-center gap-2 text-xs transition-opacity ${active ? "opacity-100" : "opacity-30"}`}>
+                      <div className="shrink-0 rounded" style={{ width: 20, height: Math.max(band.weight, 1.5) + 1, backgroundColor: band.color, opacity: 0.9 }} />
+                      <span>{band.label}</span>
+                    </div>
+                  );
+                })}
                 <p className="text-xs text-muted-foreground mt-1">
-                  Source: HIFLD Open Data · AC overhead in service
+                  Source: HIFLD Open Data · AC in service
                 </p>
               </>
             )}
