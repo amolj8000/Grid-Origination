@@ -25,51 +25,72 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Fuel type color palette
+// ── Shared fuel-type color palette (EIA 860 plants + ISO queue) ──────────────
 const FUEL_COLORS: Record<string, string> = {
-  solar:       "#f59e0b",  // amber
-  wind:        "#14b8a6",  // teal
-  storage:     "#8b5cf6",  // purple
-  natural_gas: "#f97316",  // orange
-  nuclear:     "#3b82f6",  // blue
-  hydro:       "#22c55e",  // green
-  solar_storage:"#f59e0b",
-  wind_storage: "#14b8a6",
+  solar:         "#f59e0b",  // amber
+  wind:          "#14b8a6",  // teal
+  offshore_wind: "#06b6d4",  // cyan  (distinct from onshore)
+  storage:       "#8b5cf6",  // purple
+  natural_gas:   "#f97316",  // orange
+  nuclear:       "#3b82f6",  // blue
+  hydro:         "#22c55e",  // green
+  geothermal:    "#ec4899",  // pink
+  hybrid:        "#a3e635",  // lime  (solar+storage combos)
+  solar_storage: "#f59e0b",
+  wind_storage:  "#14b8a6",
+  biomass:       "#84cc16",  // yellow-green
 };
 
 const FUEL_LABELS: Record<string, string> = {
-  solar: "Solar",
-  wind: "Wind",
-  storage: "Battery Storage",
-  natural_gas: "Natural Gas",
-  nuclear: "Nuclear",
-  hydro: "Hydro",
+  solar:         "Solar",
+  wind:          "Wind",
+  offshore_wind: "Offshore Wind",
+  storage:       "Battery Storage",
+  natural_gas:   "Natural Gas",
+  nuclear:       "Nuclear",
+  hydro:         "Hydro",
+  geothermal:    "Geothermal",
+  hybrid:        "Hybrid (Solar+Storage)",
 };
 
-// Queue dots are a distinct lighter color per ISO
-const QUEUE_COLORS: Record<string, string> = {
-  ERCOT: "#2dd4bf",
-  CAISO: "#fbbf24",
-  PJM:   "#a78bfa",
-};
-
-const createDot = (color: string, size = 14, opacity = 1) =>
+// EIA 860 — circle marker (operational plants)
+const createDot = (color: string, size = 14) =>
   new L.DivIcon({
     className: "",
-    html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 4px rgba(0,0,0,0.6);opacity:${opacity}"></div>`,
+    html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2px solid rgba(255,255,255,0.7);box-shadow:0 0 4px rgba(0,0,0,0.6)"></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
 
-const FUEL_TYPES = ["all", "solar", "wind", "storage", "natural_gas", "nuclear", "hydro"];
+// ISO Queue — diamond marker (queue/pipeline projects)
+// A CSS-rotated square produces a diamond. Outer wrapper is unrotated so anchor math works.
+const createDiamond = (color: string, size = 12) => {
+  const inner = size * 0.75;
+  const pad = (size - inner) / 2;
+  return new L.DivIcon({
+    className: "",
+    html: `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;">
+      <div style="width:${inner}px;height:${inner}px;background:${color};transform:rotate(45deg);border:1.5px solid rgba(255,255,255,0.8);box-shadow:0 0 4px rgba(0,0,0,0.7);opacity:0.9;"></div>
+    </div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+};
+
+const FUEL_TYPES_EIA = ["all", "solar", "wind", "storage", "natural_gas", "nuclear", "hydro", "biomass", "geothermal"];
+const FUEL_TYPES_QUEUE = ["all", "solar", "wind", "offshore_wind", "storage", "natural_gas", "hybrid", "geothermal"];
 const MARKETS = ["all", "ERCOT", "CAISO", "PJM"];
+
+// EIA 860 legend entries (fuels actually present in dataset)
+const EIA_LEGEND = ["solar", "wind", "storage", "natural_gas", "nuclear", "hydro"] as const;
+// Queue legend entries
+const QUEUE_LEGEND = ["solar", "wind", "offshore_wind", "storage", "natural_gas", "hybrid", "geothermal"] as const;
 
 export default function MapWorkspace() {
   const [showEia860, setShowEia860] = useState(true);
   const [showQueue, setShowQueue] = useState(true);
   const [fuelFilter, setFuelFilter] = useState("all");
   const [marketFilter, setMarketFilter] = useState("all");
-  // Log-scale slider positions [0..100] → actual MW via posToMw()
   const [mwPos, setMwPos] = useState<[number, number]>([0, 100]);
   const minMw = posToMw(mwPos[0]);
   const maxMw = posToMw(mwPos[1]);
@@ -93,9 +114,11 @@ export default function MapWorkspace() {
     return queueProjects.filter(q => {
       if (!q.latitude || !q.longitude) return false;
       if (marketFilter !== "all" && q.market !== marketFilter) return false;
+      // mirror fuel filter to queue when set
+      if (fuelFilter !== "all" && q.fuelType !== fuelFilter) return false;
       return true;
     });
-  }, [queueProjects, marketFilter]);
+  }, [queueProjects, marketFilter, fuelFilter]);
 
   const isLoading = isLoadingCandidates || isLoadingQueue;
 
@@ -121,6 +144,7 @@ export default function MapWorkspace() {
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
 
+          {/* ── EIA 860 Operational Plants — circles ── */}
           {showEia860 && filteredCandidates.map(c => (
             <Marker
               key={`eia-${c.id}`}
@@ -144,24 +168,24 @@ export default function MapWorkspace() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">COD</span><br />
-                      <span className="font-semibold">{c.commissioningYear ?? "—"}</span>
+                      <span className="font-semibold">{(c as any).commissioningYear ?? "—"}</span>
                     </div>
                     {(c.county || c.state) && (
                       <div className="col-span-2">
                         <span className="text-muted-foreground">Location</span><br />
-                        <span className="font-medium">
-                          {[c.county, c.state].filter(Boolean).join(", ")}
-                        </span>
+                        <span className="font-medium">{[c.county, c.state].filter(Boolean).join(", ")}</span>
                       </div>
                     )}
                     {c.notes && c.notes.includes("Owner:") && (
                       <div className="col-span-2">
                         <span className="text-muted-foreground">Owner</span><br />
-                        <span className="font-medium">{c.notes.replace("Source: WRI GPPD | Owner: ", "").replace("Source: WRI GPPD", "").replace(/^\| Owner: /, "")}</span>
+                        <span className="font-medium">
+                          {c.notes.replace("Source: EIA 860 2024 | Owner: ", "").replace(/^.*Owner: /, "")}
+                        </span>
                       </div>
                     )}
                   </div>
-                  <div className="mt-2 pt-1.5 border-t border-gray-700 flex items-center gap-1 text-xs text-green-400">
+                  <div className="mt-2 pt-1.5 border-t border-gray-700 flex items-center gap-1.5 text-xs text-green-400">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
                     Operational
                   </div>
@@ -170,22 +194,33 @@ export default function MapWorkspace() {
             </Marker>
           ))}
 
+          {/* ── ISO Queue Projects — diamonds ── */}
           {showQueue && filteredQueue.map(q => (
             <Marker
               key={`q-${q.id}`}
               position={[q.latitude!, q.longitude!]}
-              icon={createDot(QUEUE_COLORS[q.market] ?? "#94a3b8", 10, 0.75)}
+              icon={createDiamond(FUEL_COLORS[q.fuelType] ?? "#94a3b8")}
             >
               <Popup>
-                <div className="min-w-[200px]">
+                <div className="min-w-[210px]">
                   <div className="font-semibold text-sm mb-1">{q.projectName}</div>
-                  <div className="text-xs text-muted-foreground mb-2">
-                    {q.market} Queue · {q.fuelType.replace("_", " ")}
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+                    {/* Diamond indicator matching the map marker */}
+                    <span
+                      className="inline-block shrink-0"
+                      style={{
+                        width: 8, height: 8,
+                        background: FUEL_COLORS[q.fuelType] ?? "#94a3b8",
+                        transform: "rotate(45deg)",
+                        display: "inline-block",
+                      }}
+                    />
+                    {q.market} Queue · {FUEL_LABELS[q.fuelType] ?? q.fuelType.replace(/_/g, " ")}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                     <div>
                       <span className="text-muted-foreground">Capacity</span><br />
-                      <span className="font-medium">{q.capacityMw?.toLocaleString()} MW</span>
+                      <span className="font-semibold">{q.capacityMw?.toLocaleString()} MW</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Status</span><br />
@@ -193,10 +228,23 @@ export default function MapWorkspace() {
                     </div>
                     {q.studyGroupPhase && (
                       <div className="col-span-2">
-                        <span className="text-muted-foreground">Phase</span><br />
+                        <span className="text-muted-foreground">Study Phase</span><br />
                         <span className="font-medium">{q.studyGroupPhase}</span>
                       </div>
                     )}
+                    {q.interconnectionPoint && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Interconnection Point</span><br />
+                        <span className="font-medium">{q.interconnectionPoint}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 pt-1.5 border-t border-gray-700 flex items-center gap-1.5 text-xs text-amber-400">
+                    <span
+                      className="inline-block shrink-0"
+                      style={{ width: 6, height: 6, background: "#f59e0b", transform: "rotate(45deg)", display: "inline-block" }}
+                    />
+                    Queue / Pipeline
                   </div>
                 </div>
               </Popup>
@@ -205,8 +253,9 @@ export default function MapWorkspace() {
         </MapContainer>
       </div>
 
-      {/* Side Panel */}
+      {/* ── Side Panel ── */}
       <div className="absolute top-4 right-4 z-10 w-72 space-y-3">
+
         {/* Layer toggles + filters */}
         <Card className="bg-card/95 backdrop-blur shadow-lg border-border">
           <CardHeader className="pb-2 pt-3 px-4">
@@ -243,23 +292,27 @@ export default function MapWorkspace() {
                   ))}
                 </SelectContent>
               </Select>
-              {showEia860 && (
-                <Select value={fuelFilter} onValueChange={setFuelFilter}>
-                  <SelectTrigger className="h-8 text-xs bg-background">
-                    <SelectValue placeholder="All Fuel Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FUEL_TYPES.map(f => (
-                      <SelectItem key={f} value={f} className="text-xs">
-                        {f === "all" ? "All Fuel Types" : FUEL_LABELS[f] ?? f}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <Select value={fuelFilter} onValueChange={setFuelFilter}>
+                <SelectTrigger className="h-8 text-xs bg-background">
+                  <SelectValue placeholder="All Fuel Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">All Fuel Types</SelectItem>
+                  <SelectItem value="solar" className="text-xs">Solar</SelectItem>
+                  <SelectItem value="wind" className="text-xs">Wind</SelectItem>
+                  <SelectItem value="offshore_wind" className="text-xs">Offshore Wind</SelectItem>
+                  <SelectItem value="storage" className="text-xs">Battery Storage</SelectItem>
+                  <SelectItem value="natural_gas" className="text-xs">Natural Gas</SelectItem>
+                  <SelectItem value="nuclear" className="text-xs">Nuclear</SelectItem>
+                  <SelectItem value="hydro" className="text-xs">Hydro</SelectItem>
+                  <SelectItem value="hybrid" className="text-xs">Hybrid</SelectItem>
+                  <SelectItem value="geothermal" className="text-xs">Geothermal</SelectItem>
+                  <SelectItem value="biomass" className="text-xs">Biomass</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* MW range slider */}
+            {/* MW range slider — EIA 860 only */}
             {showEia860 && (
               <div className="pt-1 space-y-2 border-t border-border">
                 <div className="flex items-center justify-between">
@@ -272,9 +325,7 @@ export default function MapWorkspace() {
                   </button>
                 </div>
                 <Slider
-                  min={0}
-                  max={100}
-                  step={1}
+                  min={0} max={100} step={1}
                   value={mwPos}
                   onValueChange={(v) => setMwPos(v as [number, number])}
                   className="my-1"
@@ -299,25 +350,44 @@ export default function MapWorkspace() {
           </CardContent>
         </Card>
 
-        {/* Fuel type legend */}
+        {/* Legend */}
         <Card className="bg-card/95 backdrop-blur shadow-lg border-border">
-          <CardContent className="px-4 py-3 space-y-1.5">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">EIA 860 — By Fuel</div>
-            {Object.entries(FUEL_LABELS).map(([key, label]) => (
+          <CardContent className="px-4 py-3 space-y-1">
+
+            {/* EIA 860 — circles */}
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              EIA 860 — Operational <span className="font-normal normal-case text-muted-foreground">(circle)</span>
+            </div>
+            {EIA_LEGEND.map(key => (
               <div key={key} className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: FUEL_COLORS[key] }} />
-                <span>{label}</span>
+                <div
+                  className="shrink-0 rounded-full border border-white/40"
+                  style={{ width: 10, height: 10, backgroundColor: FUEL_COLORS[key] }}
+                />
+                <span>{FUEL_LABELS[key]}</span>
               </div>
             ))}
-            <div className="border-t border-border mt-2 pt-2">
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">ISO Queue</div>
-              {Object.entries(QUEUE_COLORS).map(([iso, color]) => (
-                <div key={iso} className="flex items-center gap-2 text-xs">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0 opacity-75" style={{ backgroundColor: color }} />
-                  <span className="text-muted-foreground">{iso} queue</span>
-                </div>
-              ))}
+
+            {/* ISO Queue — diamonds */}
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-1.5 pt-2 border-t border-border">
+              ISO Queue — Pipeline <span className="font-normal normal-case text-muted-foreground">(diamond)</span>
             </div>
+            {QUEUE_LEGEND.map(key => (
+              <div key={key} className="flex items-center gap-2 text-xs">
+                {/* Diamond shape in legend */}
+                <div className="shrink-0 flex items-center justify-center" style={{ width: 10, height: 10 }}>
+                  <div
+                    style={{
+                      width: 7, height: 7,
+                      backgroundColor: FUEL_COLORS[key],
+                      transform: "rotate(45deg)",
+                      border: "1px solid rgba(255,255,255,0.5)",
+                    }}
+                  />
+                </div>
+                <span>{FUEL_LABELS[key]}</span>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>
