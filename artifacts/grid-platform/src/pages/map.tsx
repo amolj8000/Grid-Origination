@@ -128,20 +128,42 @@ export default function MapWorkspace() {
               icon={createDot(FUEL_COLORS[c.assetType] ?? "#94a3b8")}
             >
               <Popup>
-                <div className="min-w-[200px]">
+                <div className="min-w-[210px]">
                   <div className="font-semibold text-sm mb-1">{c.name}</div>
-                  <div className="text-xs text-muted-foreground mb-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: FUEL_COLORS[c.assetType] ?? "#94a3b8" }}
+                    />
                     {c.market} · {FUEL_LABELS[c.assetType] ?? c.assetType}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                     <div>
                       <span className="text-muted-foreground">Capacity</span><br />
-                      <span className="font-medium">{c.capacityMw.toLocaleString()} MW</span>
+                      <span className="font-semibold">{c.capacityMw.toLocaleString()} MW</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Location</span><br />
-                      <span className="font-medium">{c.county}, {c.state}</span>
+                      <span className="text-muted-foreground">COD</span><br />
+                      <span className="font-semibold">{c.commissioningYear ?? "—"}</span>
                     </div>
+                    {(c.county || c.state) && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Location</span><br />
+                        <span className="font-medium">
+                          {[c.county, c.state].filter(Boolean).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                    {c.notes && c.notes.includes("Owner:") && (
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground">Owner</span><br />
+                        <span className="font-medium">{c.notes.replace("Source: WRI GPPD | Owner: ", "").replace("Source: WRI GPPD", "").replace(/^\| Owner: /, "")}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 pt-1.5 border-t border-gray-700 flex items-center gap-1 text-xs text-green-400">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
+                    Operational
                   </div>
                 </div>
               </Popup>
@@ -196,7 +218,7 @@ export default function MapWorkspace() {
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-sm font-medium">EIA 860 Plants</Label>
-                <p className="text-xs text-muted-foreground">Operating & planned</p>
+                <p className="text-xs text-muted-foreground">Operational only</p>
               </div>
               <Switch checked={showEia860} onCheckedChange={setShowEia860} />
             </div>

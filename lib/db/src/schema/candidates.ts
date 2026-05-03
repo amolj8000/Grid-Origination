@@ -28,6 +28,7 @@ export const candidatesTable = pgTable("candidates", {
   gridStabilityScore: numeric("grid_stability_score", { precision: 5, scale: 2 }),
   demandProximityScore: numeric("demand_proximity_score", { precision: 5, scale: 2 }),
   developmentRiskScore: numeric("development_risk_score", { precision: 5, scale: 2 }),
+  commissioningYear: integer("commissioning_year"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
