@@ -13,13 +13,14 @@ const router = Router();
 // ERCOT Settlement Points — distinct resource node names (excludes HB_* and LZ_*)
 router.get("/ercot-settlement-points", async (req, res) => {
   try {
-    const rows = await db.execute<{ settlement_point: string }>(
-      sql`SELECT DISTINCT settlement_point
-          FROM ercot_nodal_stats
-          WHERE LEFT(settlement_point, 3) NOT IN ('HB_', 'LZ_')
-          ORDER BY settlement_point`
+    // Return real resource nodes from ercot_node_stats (seeded from CDR 12301)
+    const rows = await db.execute<{ node: string }>(
+      sql`SELECT DISTINCT node
+          FROM ercot_node_stats
+          WHERE node_type = 'resource_node'
+          ORDER BY node`
     );
-    res.json(rows.rows.map(r => r.settlement_point));
+    res.json(rows.rows.map(r => r.node));
   } catch (err) {
     req.log.error({ err }, "listErcotSettlementPoints error");
     res.status(500).json({ error: "internal_error", message: "Failed to list settlement points" });

@@ -55,7 +55,7 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 | `/ercot` | ERCOT Historical — DA/RT price trends for hubs and load zones |
 | `/caiso` | CAISO Historical — NP15/SP15/ZP26 price analysis |
 | `/pjm` | PJM Historical — 8 hubs/zones, on/off-peak, YoY comparison |
-| `/nodal` | ERCOT/CAISO Nodal Analysis — settlement point spread calculator |
+| `/nodal` | ERCOT/CAISO Nodal Analysis — settlement point spread calculator (PJM removed; ERCOT/CAISO only) |
 | `/congestion` | ERCOT Congestion Analysis — DA-RT spread heatmap and ranking |
 | `/queue` | Interconnection Queue — ERCOT/CAISO/PJM queue project tracker |
 | `/qa` | Q&A Copilot — LLM chat interface (planned: OpenAI + DB RAG) |
@@ -69,9 +69,9 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 |-------|---------|
 | `candidates` | Core project records with all 10 dimension scores |
 | `screenings` | Saved screening sessions with filters and candidate IDs |
-| `ercot_node_stats` | 15 hub/zone nodes: monthly DA+RT stats (real Jun2024+, synthetic rest) |
+| `ercot_node_stats` | 15 hub/zone nodes (real) + 804 resource nodes (real CDR 7-day rolling): monthly DA+RT stats |
 | `ercot_nodal_stats` | 17 ERCOT settlement point nodes (SUN_*, WTG_*, etc.) monthly stats |
-| `caiso_node_stats` | CAISO NP15/SP15/ZP26 monthly DA/RT stats |
+| `caiso_node_stats` | CAISO NP15/SP15/ZP26 monthly DA/RT stats (all real from OASIS) |
 | `pjm_node_stats` | PJM 8 hubs/zones monthly DA/RT stats |
 | `queue_projects` | Interconnection queue records (ERCOT, CAISO, PJM) |
 
@@ -80,8 +80,8 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 | Dataset | Status | Notes |
 |---------|--------|-------|
 | ERCOT Hub/Zone prices (RT+DA) | **REAL** | 100% real from ERCOT CDR reports 13061+13060 (public, no auth). 15 LZ/HB nodes × 28 months (Jan 2024–Apr 2026). 420 rows. Script: `seed-ercot-real`. |
-| ERCOT Resource nodes | Synthetic | 780 individual settlement points with modeled RT basis. ERCOT API `client_id` needed for real resource node data. |
-| CAISO prices (DA) | **REAL** | 100% real from CAISO OASIS PRC_LMP (public API). SP15 + NP15 trading hubs, 28 months each (Jan 2024–Apr 2026). 56 rows. Script: `seed-caiso-real`. |
+| ERCOT Resource nodes | **REAL (recent)** | 804 real resource nodes from CDR Report 12301, RT prices Apr–May 2026 (7-day rolling window). 1608 rows. Script: `seed-ercot-nodes-cdr`. Full 12-month history needs `ERCOT_CLIENT_ID` → `seed-ercot-api`. |
+| CAISO prices (DA) | **REAL** | 100% real from CAISO OASIS PRC_LMP (public API). SP15 + NP15 (28 months each) + ZP26 (14 months). 70 rows. Script: `seed-caiso-real`. |
 | PJM prices | Calibrated model | No publicly accessible real-time PJM node prices (requires PJM account). Values calibrated to published monthly hub averages. 14,336 rows. |
 | Interconnection Queue | Seeded | CAISO queue from public ISO data (2,433 real projects); ERCOT/PJM synthetic. |
 | EIA 860 projects | **Live (2024)** | 3,875 operable generators >1 MW from EIA Form 860 2024 "Operable" sheet. ISO mapped via BA codes (ERCO/CISO/PJM). |
@@ -101,7 +101,7 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 ### CAISO (seed-caiso-real)
 - **DA LMP**: CAISO OASIS PRC_LMP query, market_run_id=DAM
 - **URL**: `https://oasis.caiso.com/oasisapi/SingleZip?queryname=PRC_LMP&version=1&market_run_id=DAM&...`
-- **Valid nodes**: `TH_SP15_GEN-APND` (SP15), `TH_NP15_GEN-APND` (NP15) — others return 114-byte error
+- **Valid nodes**: `TH_SP15_GEN-APND` (SP15), `TH_NP15_GEN-APND` (NP15), `TH_ZP26_GEN-APND` (ZP26) — some months return 114-byte empty response (skipped)
 - Streaming ZIP (compSize=0 in local header) — uses central directory for actual compSize
 - Gap-fill mode: skips already-populated months, retries rate-limited months
 

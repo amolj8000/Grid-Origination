@@ -24,6 +24,7 @@ const OASIS = "https://oasis.caiso.com/oasisapi/SingleZip";
 const NODES = [
   { id: "TH_SP15_GEN-APND", label: "SP15" },
   { id: "TH_NP15_GEN-APND", label: "NP15" },
+  { id: "TH_ZP26_GEN-APND", label: "ZP26" },
 ];
 
 const YEARS_MONTHS: Array<{ year: number; month: number }> = [];

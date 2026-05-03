@@ -379,9 +379,9 @@ export default function PlatformGuide() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
             {[
-              { label: "ERCOT Resource Nodes (~947)", status: "modeled", detail: "Synthetic basis model (17 settlement points seeded). Real resource-node data still needs ERCOT API client_id." },
-              { label: "CAISO Prices", status: "modeled", detail: "ZP26 and intraday/RT node coverage are still modeled. SP15/NP15 historical DA is real." },
-              { label: "PJM Hub/Zone Prices", status: "modeled", detail: "8 hubs/zones modeled from published PJM/EIA benchmarks 2022–2026." },
+              { label: "ERCOT Resource Nodes (~947)", status: "partial", detail: "Real RT prices from CDR 12301 (rolling 7-day window). 12-month history (May 2025–Apr 2026) unlocked once ERCOT_CLIENT_ID is set (developer.ercot.com app registration)." },
+              { label: "CAISO ZP26 (Central)", status: "seeded", detail: "Real DA prices from CAISO OASIS. NP15 + SP15 real Jan 2024–Apr 2026; ZP26 now seeded from OASIS API." },
+              { label: "PJM Hub/Zone Prices", status: "modeled", detail: "PJM removed from nodal analysis (ERCOT/CAISO focus). Historical hub/zone model retained in DB." },
               { label: "Interconnection Queue", status: "seeded", detail: "ERCOT/CAISO/PJM queue data seeded. Real API pull planned." },
               { label: "EIA 860 Project Database", status: "seeded", detail: "3,875 operable generators >1 MW from EIA Form 860 2024. Filtered by ERCO/CISO/PJM balancing authority codes." },
               { label: "Candidate Scoring", status: "partial", detail: "Scoring engine live on all 3,875 EIA 860 plants. Real signal scoring from nodal + queue data planned." },

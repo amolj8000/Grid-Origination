@@ -3,8 +3,6 @@ import {
   useListErcotNodeStats,
   useListErcotNodalStats,
   useListCaisoNodeStats,
-  useListPjmNodeStats,
-  useListPjmSettlementPoints,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,24 +19,6 @@ const ERCOT_ZONES = ["LZ_HOUSTON","LZ_NORTH","LZ_SOUTH","LZ_WEST","LZ_AEN","LZ_C
 const ERCOT_HUBS  = ["HB_HOUSTON","HB_NORTH","HB_SOUTH","HB_WEST","HB_BUSAVG","HB_HUBAVG","HB_PAN"];
 const CAISO_ZONES = ["NP15","SP15","ZP26"];
 const CAISO_LABELS: Record<string,string> = { NP15:"NP15 (North)", SP15:"SP15 (South)", ZP26:"ZP26 (Central)" };
-
-const PJM_ZONES = [
-  "Western Hub","Eastern Hub","PSEG","PPL","DOM","BGE","PECO","COMED","ATSI","PENELEC","AEP-Dayton Hub","NI Hub",
-];
-const PJM_ZONE_LABELS: Record<string,string> = {
-  "Western Hub":    "Western Hub",
-  "Eastern Hub":    "Eastern Hub",
-  "PSEG":           "PSEG (NJ)",
-  "PPL":            "PPL (PA)",
-  "DOM":            "DOM (VA)",
-  "BGE":            "BGE (MD)",
-  "PECO":           "PECO (PA/NJ)",
-  "COMED":          "ComEd (IL)",
-  "ATSI":           "ATSI (NE Ohio)",
-  "PENELEC":        "PENELEC (PA)",
-  "AEP-Dayton Hub": "AEP-Dayton Hub",
-  "NI Hub":         "NI Hub (ComEd)",
-};
 
 const C = {
   teal:"#14b8a6", amber:"#f59e0b", purple:"#8b5cf6", red:"#ef4444",
@@ -271,11 +251,11 @@ function NodePicker({ value, onChange, nodes, loading, placeholder = "Select nod
 
 // ── ERCOT Node Comparison ─────────────────────────────────────────────────────
 function NodeCompare({ year, priceType }: { year:number; priceType:PriceType }) {
-  const [nodeA, setNodeA] = useState("PERMIAN_SOLAR_1");
-  const [nodeB, setNodeB] = useState("AMARILLO_WIND_1");
+  const [nodeA, setNodeA] = useState("7RNCHSLR_ALL");
+  const [nodeB, setNodeB] = useState("ABINDUST_RN");
   const isDaRt = priceType === "DA-RT";
 
-  // Fetch dynamic node list from API (only resource nodes, no zones/hubs)
+  // Fetch real resource node list from API (804 nodes from CDR 12301)
   const [nodeList, setNodeList] = useState<string[]>([]);
   const [nodeListLoading, setNodeListLoading] = useState(false);
   const nodeFetched = useRef(false);
@@ -292,17 +272,13 @@ function NodeCompare({ year, priceType }: { year:number; priceType:PriceType }) 
       .catch(() => setNodeListLoading(false));
   }, []);
 
-  const { data: aData=[], isLoading: la } = useListErcotNodalStats({ settlementPoint: nodeA, year });
-  const { data: bData=[], isLoading: lb } = useListErcotNodalStats({ settlementPoint: isDaRt ? nodeA : nodeB, year });
+  const { data: aData=[], isLoading: la } = useListErcotNodeStats({ node: nodeA, year });
+  const { data: bData=[], isLoading: lb } = useListErcotNodeStats({ node: isDaRt ? nodeA : nodeB, year });
 
   const chartData = useMemo(() => {
     if (!aData.length) return [];
     const bSrc = isDaRt ? aData : bData;
-    return buildPairChart(
-      aData.map(r => ({ ...r, avgRtPrice: r.avgRtPrice })),
-      bSrc.map(r => ({ ...r, avgRtPrice: r.avgRtPrice })),
-      priceType, nodeA, nodeB,
-    );
+    return buildPairChart(aData, bSrc, priceType, nodeA, nodeB);
   }, [aData, bData, nodeA, nodeB, priceType, isDaRt]);
 
   const keys = isDaRt ? [`${nodeA} DA`, `${nodeA} RT`] : [nodeA, nodeB];
@@ -314,9 +290,9 @@ function NodeCompare({ year, priceType }: { year:number; priceType:PriceType }) 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold">Node Comparison</CardTitle>
-            {nodeList.length > 0 && (
-              <span className="text-xs text-muted-foreground">{nodeList.length.toLocaleString()} nodes</span>
-            )}
+            {nodeList.length > 0 ? (
+              <span className="text-xs text-muted-foreground">{nodeList.length.toLocaleString()} real nodes · CDR 12301</span>
+            ) : null}
           </div>
           <div className="flex gap-2 flex-wrap">
             <NodePicker value={nodeA} onChange={setNodeA} nodes={nodeList} loading={nodeListLoading} />
@@ -328,7 +304,7 @@ function NodeCompare({ year, priceType }: { year:number; priceType:PriceType }) 
       </CardHeader>
       <CardContent>
         <PairNodeChart
-          title="Node" description=""
+          title="Node" description="RT settlement prices · recent data (Apr–May 2026). Select year 2026."
           data={chartData} keys={keys} colors={colors}
           loading={la || lb}
         />
@@ -448,158 +424,9 @@ function CaisoNodeCompare({ year, priceType }: { year:number; priceType:"DA"|"RT
   );
 }
 
-// ── PJM Zone Comparison ───────────────────────────────────────────────────────
-function PjmZoneCompare({ year, priceType }: { year:number; priceType:PriceType }) {
-  const [zoneA, setZoneA] = useState("Western Hub");
-  const [zoneB, setZoneB] = useState("PSEG");
-  const isDaRt = priceType === "DA-RT";
-
-  const { data: aData=[], isLoading: la } = useListPjmNodeStats({ node: zoneA, year });
-  const { data: bData=[], isLoading: lb } = useListPjmNodeStats({ node: isDaRt ? zoneA : zoneB, year });
-
-  const chartData = useMemo(() => {
-    if (!aData.length) return [];
-    const bSrc = isDaRt ? aData : bData;
-    return buildPairChart(aData, bSrc, priceType, zoneA, zoneB);
-  }, [aData, bData, zoneA, zoneB, priceType, isDaRt]);
-
-  const keys = isDaRt ? [`${zoneA} DA`, `${zoneA} RT`] : [zoneA, zoneB];
-  const colors = [C.teal, C.amber];
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-sm font-semibold">Zone Comparison</CardTitle>
-          <div className="flex gap-2 flex-wrap">
-            <Select value={zoneA} onValueChange={setZoneA}>
-              <SelectTrigger className="w-[150px] h-7 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>{PJM_ZONES.map(z=><SelectItem key={z} value={z} className="text-xs">{PJM_ZONE_LABELS[z]}</SelectItem>)}</SelectContent>
-            </Select>
-            {!isDaRt && (
-              <Select value={zoneB} onValueChange={setZoneB}>
-                <SelectTrigger className="w-[150px] h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{PJM_ZONES.map(z=><SelectItem key={z} value={z} className="text-xs">{PJM_ZONE_LABELS[z]}</SelectItem>)}</SelectContent>
-              </Select>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <PairNodeChart title="Zone" description="" data={chartData} keys={keys} colors={colors} loading={la || lb} />
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── PJM Node Comparison (resource nodes) ─────────────────────────────────────
-function PjmNodeCompare({ year, priceType }: { year:number; priceType:PriceType }) {
-  const [nodeA, setNodeA] = useState("LIMERICK_NUC_1");
-  const [nodeB, setNodeB] = useState("MOUNTAINEER_WIND_1");
-  const isDaRt = priceType === "DA-RT";
-
-  const { data: nodeList=[], isLoading: nodeListLoading } = useListPjmSettlementPoints();
-
-  const { data: aData=[], isLoading: la } = useListPjmNodeStats({ node: nodeA, year });
-  const { data: bData=[], isLoading: lb } = useListPjmNodeStats({ node: isDaRt ? nodeA : nodeB, year });
-
-  const chartData = useMemo(() => {
-    if (!aData.length) return [];
-    const bSrc = isDaRt ? aData : bData;
-    return buildPairChart(aData, bSrc, priceType, nodeA, nodeB);
-  }, [aData, bData, nodeA, nodeB, priceType, isDaRt]);
-
-  const keys = isDaRt ? [`${nodeA} DA`, `${nodeA} RT`] : [nodeA, nodeB];
-  const colors = [C.amber, C.red];
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Node Comparison</CardTitle>
-            {nodeList.length > 0 && (
-              <span className="text-xs text-muted-foreground">{nodeList.length.toLocaleString()} nodes</span>
-            )}
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <NodePicker value={nodeA} onChange={setNodeA} nodes={nodeList} loading={nodeListLoading} />
-            {!isDaRt && (
-              <NodePicker value={nodeB} onChange={setNodeB} nodes={nodeList} loading={nodeListLoading} />
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <PairNodeChart title="Node" description="" data={chartData} keys={keys} colors={colors} loading={la || lb} />
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── PJM Spread Summary ────────────────────────────────────────────────────────
-function PjmSpreadSummary({ year }: { year:number }) {
-  const KEY_ZONES = ["Western Hub","Eastern Hub","PSEG","PPL","DOM","BGE","COMED","ATSI"];
-  const queries = KEY_ZONES.map(z => ({
-    zone: z,
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    result: useListPjmNodeStats({ node: z, year }),
-  }));
-
-  const loading = queries.some(q => q.result.isLoading);
-
-  const tableRows = useMemo(() => {
-    return queries.map(({ zone, result }) => {
-      const rows = result.data ?? [];
-      if (!rows.length) return null;
-      const da = rows.reduce((s,r)=>s+Number(r.avgDaPrice),0)/rows.length;
-      const rtRows = rows.filter(r=>r.avgRtPrice!=null);
-      const rt = rtRows.length ? rtRows.reduce((s,r)=>s+Number(r.avgRtPrice),0)/rtRows.length : da;
-      const spread = da - rt;
-      const negPct = rows.reduce((s,r)=>s+Number(r.negPricePercent??0),0)/rows.length;
-      const vol = rows.reduce((s,r)=>s+Number(r.volatility??0),0)/rows.length;
-      return { label: PJM_ZONE_LABELS[zone] ?? zone, da, rt, spread, negPct, vol };
-    }).filter(Boolean).sort((a,b)=>b!.da - a!.da);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queries.map(q=>q.result.data).join(","), year]);
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">DA–RT Spread Summary — {year} Annual Avg</CardTitle>
-        <CardDescription className="text-xs">PJM congestion hotspots: DOM (VA datacenter load), PSEG/BGE (NJ/MD gas constraints); spread = DA − RT</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="h-16 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {tableRows.map(r=>(
-              <div key={r!.label} className="rounded-md border border-border p-3 bg-background">
-                <div className="font-mono text-xs font-semibold truncate">{r!.label}</div>
-                <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-                  <span>DA <span className="text-foreground font-medium">${r!.da.toFixed(2)}</span></span>
-                  <span>RT <span className="text-foreground font-medium">${r!.rt.toFixed(2)}</span></span>
-                </div>
-                <div className="mt-1 text-xs font-semibold" style={{ color: r!.spread > 3 ? C.amber : r!.spread > 0.5 ? C.teal : r!.spread < -2 ? C.red : C.mutedFg }}>
-                  Spread ${r!.spread.toFixed(2)}/MWh
-                </div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  Neg price: <span className="text-foreground">{r!.negPct.toFixed(1)}%</span>
-                  &nbsp;·&nbsp;Vol: <span className="text-foreground">${r!.vol.toFixed(1)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function NodalAnalysis() {
-  const [iso, setIso] = useState<"ERCOT"|"CAISO"|"PJM">("ERCOT");
+  const [iso, setIso] = useState<"ERCOT"|"CAISO">("ERCOT");
   const [year, setYear] = useState<number>(2025);
   const [priceType, setPriceType] = useState<PriceType>("DA");
 
@@ -615,7 +442,7 @@ export default function NodalAnalysis() {
         {/* ISO toggle */}
         <div className="flex items-center gap-3">
           <div className="flex rounded-lg overflow-hidden border border-border">
-            {(["ERCOT","CAISO","PJM"] as const).map(i=>(
+            {(["ERCOT","CAISO"] as const).map(i=>(
               <button key={i} onClick={()=>setIso(i)}
                 className={`px-5 py-2 text-sm font-semibold transition-colors ${iso===i ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >{i}</button>
@@ -694,38 +521,6 @@ export default function NodalAnalysis() {
         </>
       )}
 
-      {/* PJM Section */}
-      {iso === "PJM" && (
-        <>
-          <div className="flex flex-wrap gap-3 items-center">
-            <span className="text-sm font-medium text-muted-foreground">Year:</span>
-            <Select value={String(year)} onValueChange={v=>setYear(Number(v))}>
-              <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
-              <SelectContent>{[2022,2023,2024,2025].map(y=><SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
-            </Select>
-
-            <span className="text-sm font-medium text-muted-foreground ml-2">Price:</span>
-            <div className="flex rounded-md overflow-hidden border border-border">
-              {(["DA","RT","DA-RT"] as const).map(pt=>(
-                <button key={pt} onClick={()=>setPriceType(pt)}
-                  className={`px-4 py-1.5 text-sm font-medium transition-colors ${priceType===pt ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                >{pt}</button>
-              ))}
-            </div>
-
-            {priceType === "DA-RT" && (
-              <span className="text-xs text-muted-foreground italic">Single node selected — shows DA vs RT</span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <PjmZoneCompare year={year} priceType={priceType} />
-            <PjmNodeCompare year={year} priceType={priceType} />
-          </div>
-
-          <PjmSpreadSummary year={year} />
-        </>
-      )}
     </div>
   );
 }
