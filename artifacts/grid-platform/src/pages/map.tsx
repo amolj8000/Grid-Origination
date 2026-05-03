@@ -4,11 +4,9 @@ import { MapContainer, TileLayer, Marker, Popup, GeoJSON } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Layers, Zap, Server, ChevronDown, Check } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Loader2, Zap, Server, ChevronDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 
 // Log-scale helpers
@@ -51,6 +49,10 @@ const FUEL_LABELS: Record<string, string> = {
   hydro:         "Hydro",
   geothermal:    "Geothermal",
   hybrid:        "Hybrid (Solar+Storage)",
+  biomass:       "Biomass",
+  coal:          "Coal",
+  oil:           "Oil",
+  other:         "Other",
 };
 
 // ── Transmission voltage bands — matching OpenGridWorks categories ────────────
@@ -135,113 +137,147 @@ interface DcMarker {
 }
 
 // ── Filter constants ─────────────────────────────────────────────────────────
-const MARKETS = ["all", "ERCOT", "CAISO", "PJM"];
-const EIA_LEGEND    = ["solar", "wind", "storage", "natural_gas", "nuclear", "hydro"] as const;
-const QUEUE_LEGEND  = ["solar", "wind", "offshore_wind", "storage", "natural_gas", "hybrid", "geothermal"] as const;
+const ISO_MARKETS = ["ERCOT", "CAISO", "PJM"] as const;
+const EIA_LEGEND   = ["solar", "wind", "storage", "natural_gas", "nuclear", "hydro", "biomass", "geothermal", "hybrid"] as const;
+const QUEUE_LEGEND = ["solar", "wind", "offshore_wind", "storage", "natural_gas", "hybrid", "geothermal", "nuclear", "hydro"] as const;
+const EIA_FILTERABLE   = new Set<string>(EIA_LEGEND);
+const QUEUE_FILTERABLE = new Set<string>(QUEUE_LEGEND);
 
-// All fuel types (OpenGridWorks style)
-const ALL_FUELS = [
-  "solar", "wind", "offshore_wind", "storage", "pumped_storage",
-  "hydro", "nuclear", "natural_gas", "coal", "oil", "geothermal", "biomass", "other",
-] as const;
-const ALL_FUEL_LABELS: Record<string, string> = {
-  ...Object.fromEntries(Object.entries(FUEL_LABELS)),
-  pumped_storage: "Pumped Storage",
-  coal: "Coal",
-  oil: "Oil",
-  other: "Other",
-};
+// ── Interactive panel helper components ──────────────────────────────────────
 
-// ── MultiSelect dropdown component ───────────────────────────────────────────
-function MultiSelect({
-  options,
-  selected,
-  onToggle,
-  placeholder,
-  renderLabel,
+function LayerSection({
+  title, subtitle, icon, enabled, onEnable, expanded, onExpand, countLabel, children,
 }: {
-  options: readonly string[];
-  selected: Set<string>;
-  onToggle: (v: string) => void;
-  placeholder: string;
-  renderLabel?: (v: string) => React.ReactNode;
+  title: string;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  enabled: boolean;
+  onEnable: (v: boolean) => void;
+  expanded: boolean;
+  onExpand: () => void;
+  countLabel?: string;
+  children?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const count = selected.size;
-
-  useEffect(() => {
-    function onOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, [open]);
-
   return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="h-8 w-full text-xs bg-background border border-input rounded-md px-3 flex items-center justify-between gap-1.5 hover:bg-accent/50 transition-colors"
+    <div className="border-b border-border/60 last:border-0">
+      <div
+        onClick={onExpand}
+        className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-white/5 transition-colors cursor-pointer select-none"
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => e.key === "Enter" && onExpand()}
       >
-        <span className={`truncate ${count === 0 ? "text-muted-foreground" : "text-foreground"}`}>
-          {count === 0 ? placeholder : `${count} selected`}
-        </span>
-        <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="absolute top-full mt-1 left-0 right-0 bg-popover border border-border rounded-md shadow-lg z-[9999] max-h-56 overflow-y-auto">
-          {count > 0 && (
-            <button
-              type="button"
-              onClick={() => options.forEach(o => selected.has(o) && onToggle(o))}
-              className="w-full text-left text-xs px-3 py-1.5 text-primary hover:bg-accent border-b border-border"
-            >
-              Clear all
-            </button>
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
+        />
+        {icon}
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium leading-tight">{title}</div>
+          {subtitle && (
+            <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{subtitle}</div>
           )}
-          {options.map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => onToggle(opt)}
-              className="flex items-center gap-2 px-3 py-1.5 w-full text-xs hover:bg-accent text-left"
-            >
-              <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${selected.has(opt) ? "bg-primary border-primary" : "border-input"}`}>
-                {selected.has(opt) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-              </div>
-              {renderLabel ? renderLabel(opt) : opt}
-            </button>
-          ))}
+        </div>
+        {countLabel && (
+          <span className="text-[10px] tabular-nums text-muted-foreground mr-1">{countLabel}</span>
+        )}
+        <div onClick={e => e.stopPropagation()} className="shrink-0">
+          <Switch
+            checked={enabled}
+            onCheckedChange={onEnable}
+            className="scale-90"
+          />
+        </div>
+      </div>
+      {expanded && <div className="px-4 pb-3 space-y-0.5">{children}</div>}
+    </div>
+  );
+}
+
+function FuelRow({
+  fuelKey, color, label, count, active, onToggle, shape,
+}: {
+  fuelKey: string;
+  color: string;
+  label: string;
+  count: number;
+  active: boolean;
+  onToggle: () => void;
+  shape: "circle" | "diamond";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`flex items-center gap-2 w-full text-left py-[3px] px-1 rounded hover:bg-white/5 transition-opacity ${active ? "opacity-100" : "opacity-30"}`}
+    >
+      {shape === "circle" ? (
+        <div
+          className="shrink-0 rounded-full border border-white/30"
+          style={{ width: 9, height: 9, backgroundColor: color }}
+        />
+      ) : (
+        <div className="shrink-0 flex items-center justify-center" style={{ width: 10, height: 10 }}>
+          <div
+            style={{ width: 7, height: 7, backgroundColor: color, transform: "rotate(45deg)", border: "1px solid rgba(255,255,255,0.4)" }}
+          />
         </div>
       )}
-    </div>
+      <span className="flex-1 text-[11px] leading-tight">{label}</span>
+      <span className="text-[10px] text-muted-foreground tabular-nums">{count.toLocaleString()}</span>
+    </button>
+  );
+}
+
+function VoltageRow({
+  band, count, active, onToggle,
+}: {
+  band: typeof VOLTAGE_BANDS[number];
+  count: number;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`flex items-center gap-2 w-full text-left py-[3px] px-1 rounded hover:bg-white/5 transition-opacity ${active ? "opacity-100" : "opacity-30"}`}
+    >
+      <div
+        className="shrink-0 rounded"
+        style={{ width: 18, height: Math.max(band.weight, 1.5) + 1, backgroundColor: band.color, opacity: 0.9, flexShrink: 0 }}
+      />
+      <span className="flex-1 text-[11px] leading-tight">{band.label}</span>
+      {count > 0 && (
+        <span className="text-[10px] text-muted-foreground tabular-nums">{count.toLocaleString()}</span>
+      )}
+    </button>
   );
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 export default function MapWorkspace() {
+  // Layer visibility
   const [showEia860,       setShowEia860]       = useState(true);
   const [showQueue,        setShowQueue]        = useState(true);
   const [showTransmission, setShowTransmission] = useState(false);
-  // Multi-select fuel filter — empty set = show all
-  const [fuelFilters,      setFuelFilters]      = useState<Set<string>>(new Set());
-  // Multi-select voltage band filter — empty set = show all bands
-  const [txVoltageFilters, setTxVoltageFilters] = useState<Set<string>>(new Set());
-  const [marketFilter,     setMarketFilter]     = useState("all");
-  const [mwPos,            setMwPos]            = useState<[number, number]>([0, 100]);
+  const [showDatacenters,  setShowDatacenters]  = useState(false);
 
-  function toggleFuel(v: string) {
-    setFuelFilters(prev => {
-      const next = new Set(prev);
-      next.has(v) ? next.delete(v) : next.add(v);
-      return next;
-    });
-  }
+  // Section expand state (all open by default)
+  const [eia860Expanded, setEia860Expanded] = useState(true);
+  const [queueExpanded,  setQueueExpanded]  = useState(true);
+  const [txExpanded,     setTxExpanded]     = useState(true);
+  const [dcExpanded,     setDcExpanded]     = useState(false);
 
-  function toggleVoltage(v: string) {
-    setTxVoltageFilters(prev => {
+  // Inclusive filter sets — item in set = visible. All start fully populated (show all)
+  const [eia860Fuels,      setEia860Fuels]      = useState<Set<string>>(() => new Set(EIA_LEGEND));
+  const [queueFuels,       setQueueFuels]       = useState<Set<string>>(() => new Set(QUEUE_LEGEND));
+  const [txVoltageFilters, setTxVoltageFilters] = useState<Set<string>>(() => new Set(VOLTAGE_BAND_LABELS));
+  const [marketFilters,    setMarketFilters]    = useState<Set<string>>(() => new Set(ISO_MARKETS));
+
+  const [mwPos, setMwPos] = useState<[number, number]>([0, 100]);
+
+  function toggleSet(setter: React.Dispatch<React.SetStateAction<Set<string>>>, v: string) {
+    setter(prev => {
       const next = new Set(prev);
       next.has(v) ? next.delete(v) : next.add(v);
       return next;
@@ -251,7 +287,6 @@ export default function MapWorkspace() {
   const maxMw = posToMw(mwPos[1]);
 
   // Datacenter state
-  const [showDatacenters,  setShowDatacenters]  = useState(false);
   const [dcMarkers,        setDcMarkers]        = useState<DcMarker[]>([]);
   const [dcLoading,        setDcLoading]        = useState(false);
   const [dcError,          setDcError]          = useState<string | null>(null);
@@ -335,36 +370,66 @@ export default function MapWorkspace() {
     if (!candidates) return [];
     return candidates.filter(c => {
       if (!c.latitude || !c.longitude) return false;
-      if (fuelFilters.size > 0 && !fuelFilters.has(c.assetType)) return false;
-      if (marketFilter !== "all" && c.market !== marketFilter) return false;
+      if (!marketFilters.has(c.market)) return false;
+      if (EIA_FILTERABLE.has(c.assetType) && !eia860Fuels.has(c.assetType)) return false;
       if (c.capacityMw < minMw || c.capacityMw > maxMw) return false;
       return true;
     });
-  }, [candidates, fuelFilters, marketFilter, minMw, maxMw]);
+  }, [candidates, eia860Fuels, marketFilters, minMw, maxMw]);
 
   const filteredQueue = useMemo(() => {
     if (!queueProjects) return [];
     return queueProjects.filter(q => {
       if (!q.latitude || !q.longitude) return false;
-      if (marketFilter !== "all" && q.market !== marketFilter) return false;
-      if (fuelFilters.size > 0 && !fuelFilters.has(q.fuelType)) return false;
+      if (!marketFilters.has(q.market)) return false;
+      if (QUEUE_FILTERABLE.has(q.fuelType) && !queueFuels.has(q.fuelType)) return false;
       return true;
     });
-  }, [queueProjects, marketFilter, fuelFilters]);
+  }, [queueProjects, marketFilters, queueFuels]);
 
-  // Filter transmission lines by selected voltage bands (empty = show all)
+  // Filter transmission lines by selected voltage bands (inclusive set)
   const filteredTxLines = useMemo((): FeatureCollection | null => {
     if (!txLines) return null;
-    if (txVoltageFilters.size === 0) return txLines;
+    if (txVoltageFilters.size === VOLTAGE_BAND_LABELS.length) return txLines;
     return {
       type: "FeatureCollection",
       features: txLines.features.filter((f: Feature) => {
         const v = f.properties?.VOLTAGE ?? 0;
-        const label = getVoltageBandLabel(v);
-        return txVoltageFilters.has(label);
+        return txVoltageFilters.has(getVoltageBandLabel(v));
       }),
     };
   }, [txLines, txVoltageFilters]);
+
+  // Per-fuel counts (market-filtered only, not fuel-filtered) for legend badges
+  const eia860Counts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!candidates) return counts;
+    for (const c of candidates) {
+      if (!marketFilters.has(c.market)) continue;
+      counts[c.assetType] = (counts[c.assetType] ?? 0) + 1;
+    }
+    return counts;
+  }, [candidates, marketFilters]);
+
+  const queueCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!queueProjects) return counts;
+    for (const q of queueProjects) {
+      if (!marketFilters.has(q.market)) continue;
+      counts[q.fuelType] = (counts[q.fuelType] ?? 0) + 1;
+    }
+    return counts;
+  }, [queueProjects, marketFilters]);
+
+  const txBandCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!txLines) return counts;
+    for (const f of txLines.features) {
+      const label = getVoltageBandLabel(f.properties?.VOLTAGE ?? 0);
+      counts[label] = (counts[label] ?? 0) + 1;
+    }
+    return counts;
+  }, [txLines]);
 
   const isLoading = isLoadingCandidates || isLoadingQueue;
 
@@ -414,7 +479,7 @@ export default function MapWorkspace() {
           {/* ── Transmission Lines (bottom layer) ── */}
           {showTransmission && filteredTxLines && (
             <GeoJSON
-              key={`transmission-${txVoltageFilters.size}`}
+              key={`transmission-${Array.from(txVoltageFilters).sort().join(",")}`}
               data={filteredTxLines}
               style={txStyle}
               interactive={false}
@@ -565,210 +630,158 @@ export default function MapWorkspace() {
       </div>
 
       {/* ── Side Panel ── */}
-      <div className="absolute top-4 right-4 z-10 w-72 space-y-3">
+      <div className="absolute top-4 right-4 z-10 w-68" style={{ width: 272 }}>
+        <Card className="bg-card/95 backdrop-blur shadow-lg border-border overflow-hidden">
 
-        {/* Layer toggles + filters */}
-        <Card className="bg-card/95 backdrop-blur shadow-lg border-border">
-          <CardHeader className="pb-2 pt-3 px-4">
-            <CardTitle className="text-xs font-semibold flex items-center gap-2 uppercase tracking-wider text-muted-foreground">
-              <Layers className="h-3.5 w-3.5" /> Map Layers
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 px-4 pb-3">
+          {/* Market chips */}
+          <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Markets</span>
+            {ISO_MARKETS.map(m => {
+              const active = marketFilters.has(m);
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleSet(setMarketFilters, m)}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all ${
+                    active
+                      ? "bg-primary/20 border-primary/60 text-primary"
+                      : "bg-transparent border-border text-muted-foreground opacity-40"
+                  }`}
+                >
+                  {m}
+                </button>
+              );
+            })}
+          </div>
 
-            {/* EIA 860 */}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium">EIA 860 Plants</Label>
-                <p className="text-xs text-muted-foreground">Operational only</p>
-              </div>
-              <Switch checked={showEia860} onCheckedChange={setShowEia860} />
-            </div>
-
-            {/* ISO Queue */}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium">ISO Queue Projects</Label>
-                <p className="text-xs text-muted-foreground">Interconnection pipeline</p>
-              </div>
-              <Switch checked={showQueue} onCheckedChange={setShowQueue} />
-            </div>
-
-            {/* Transmission lines */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5 text-amber-400" />
-                    Transmission Lines
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {txLines
-                      ? `${(filteredTxLines?.features.length ?? 0).toLocaleString()} / ${txLines.features.length.toLocaleString()} lines`
-                      : txLoading
-                      ? "Loading from HIFLD…"
-                      : "≥100kV backbone, US-wide"}
-                  </p>
-                </div>
-                <Switch checked={showTransmission} onCheckedChange={setShowTransmission} />
-              </div>
-              {showTransmission && (
-                <MultiSelect
-                  options={VOLTAGE_BAND_LABELS}
-                  selected={txVoltageFilters}
-                  onToggle={toggleVoltage}
-                  placeholder="All voltage bands"
-                  renderLabel={label => {
-                    const band = VOLTAGE_BANDS.find(b => b.label === label)!;
-                    return (
-                      <span className="flex items-center gap-2">
-                        <span className="shrink-0 rounded" style={{ display: "inline-block", width: 18, height: band.weight + 1, backgroundColor: band.color, opacity: 0.9 }} />
-                        {label}
-                      </span>
-                    );
-                  }}
-                />
-              )}
-            </div>
-
-            {/* Data Centers */}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm font-medium flex items-center gap-1.5">
-                  <Server className="h-3.5 w-3.5" style={{ color: DC_COLOR }} />
-                  Data Centers
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {dcMarkers.length > 0
-                    ? `${dcMarkers.length} facilities`
-                    : dcLoading
-                    ? "Loading from OSM…"
-                    : dcError
-                    ? "Load error — retry"
-                    : "Hyperscale & colo, US-wide"}
-                </p>
-              </div>
-              <Switch
-                checked={showDatacenters}
-                onCheckedChange={setShowDatacenters}
-              />
-            </div>
-
-            {/* Market + fuel filters */}
-            <div className="pt-1 space-y-2">
-              <Select value={marketFilter} onValueChange={setMarketFilter}>
-                <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="All Markets" /></SelectTrigger>
-                <SelectContent>
-                  {MARKETS.map(m => (
-                    <SelectItem key={m} value={m} className="text-xs">{m === "all" ? "All Markets" : m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <MultiSelect
-                options={ALL_FUELS}
-                selected={fuelFilters}
-                onToggle={toggleFuel}
-                placeholder="All Fuel Types"
-                renderLabel={v => (
-                  <span className="flex items-center gap-2">
-                    <span className="shrink-0 rounded-full border border-white/20" style={{ display: "inline-block", width: 8, height: 8, backgroundColor: FUEL_COLORS[v] ?? "#94a3b8" }} />
-                    {ALL_FUEL_LABELS[v] ?? v}
-                  </span>
-                )}
-              />
-            </div>
-
-            {/* MW capacity slider */}
-            {showEia860 && (
-              <div className="pt-1 space-y-2 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Capacity Range</Label>
-                  <button className="text-xs text-primary hover:underline" onClick={() => setMwPos([0, 100])}>Reset</button>
-                </div>
-                <Slider min={0} max={100} step={1} value={mwPos} onValueChange={v => setMwPos(v as [number, number])} className="my-1" />
-                <div className="flex justify-between text-xs font-medium">
-                  <span className="text-primary">{fmtMw(minMw)}</span>
-                  <span className="text-muted-foreground">—</span>
-                  <span className="text-primary">{fmtMw(maxMw)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Counts */}
-            <div className="flex gap-3 text-xs pt-1 text-muted-foreground border-t border-border flex-wrap">
-              {showEia860 && <span><span className="font-semibold text-foreground">{filteredCandidates.length}</span> plants</span>}
-              {showQueue  && <span><span className="font-semibold text-foreground">{filteredQueue.length}</span> queue</span>}
-              {showTransmission && txLines && <span><span className="font-semibold text-foreground">{txLines.features.length.toLocaleString()}</span> tx lines</span>}
-              {showDatacenters && dcMarkers.length > 0 && <span><span className="font-semibold text-foreground">{dcMarkers.length}</span> DCs</span>}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Legend */}
-        <Card className="bg-card/95 backdrop-blur shadow-lg border-border">
-          <CardContent className="px-4 py-3 space-y-1">
-
-            {/* EIA 860 fuel */}
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-              EIA 860 — Operational <span className="font-normal normal-case">(circle)</span>
-            </div>
+          {/* EIA 860 Plants */}
+          <LayerSection
+            title="EIA 860 Plants"
+            subtitle="Operational · circle markers"
+            enabled={showEia860}
+            onEnable={setShowEia860}
+            expanded={eia860Expanded}
+            onExpand={() => setEia860Expanded(v => !v)}
+            countLabel={showEia860 ? filteredCandidates.length.toLocaleString() : undefined}
+          >
             {EIA_LEGEND.map(key => (
-              <div key={key} className="flex items-center gap-2 text-xs">
-                <div className="shrink-0 rounded-full border border-white/30" style={{ width: 10, height: 10, backgroundColor: FUEL_COLORS[key] }} />
-                <span>{FUEL_LABELS[key]}</span>
-              </div>
+              <FuelRow
+                key={key}
+                fuelKey={key}
+                color={FUEL_COLORS[key] ?? "#94a3b8"}
+                label={FUEL_LABELS[key] ?? key}
+                count={eia860Counts[key] ?? 0}
+                active={eia860Fuels.has(key)}
+                onToggle={() => toggleSet(setEia860Fuels, key)}
+                shape="circle"
+              />
             ))}
-
-            {/* ISO Queue fuel */}
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-1.5 pt-2 border-t border-border">
-              ISO Queue — Pipeline <span className="font-normal normal-case">(diamond)</span>
+            {/* MW slider */}
+            <div className="pt-2 mt-1 border-t border-border/50 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Capacity Range</span>
+                <button type="button" className="text-[10px] text-primary hover:underline" onClick={() => setMwPos([0, 100])}>Reset</button>
+              </div>
+              <Slider min={0} max={100} step={1} value={mwPos} onValueChange={v => setMwPos(v as [number, number])} />
+              <div className="flex justify-between text-[10px] font-medium">
+                <span className="text-primary">{fmtMw(minMw)}</span>
+                <span className="text-muted-foreground">—</span>
+                <span className="text-primary">{fmtMw(maxMw)}</span>
+              </div>
             </div>
+          </LayerSection>
+
+          {/* ISO Queue Projects */}
+          <LayerSection
+            title="ISO Queue Projects"
+            subtitle="Interconnection pipeline · diamond"
+            enabled={showQueue}
+            onEnable={setShowQueue}
+            expanded={queueExpanded}
+            onExpand={() => setQueueExpanded(v => !v)}
+            countLabel={showQueue ? filteredQueue.length.toLocaleString() : undefined}
+          >
             {QUEUE_LEGEND.map(key => (
-              <div key={key} className="flex items-center gap-2 text-xs">
-                <div className="shrink-0 flex items-center justify-center" style={{ width: 10, height: 10 }}>
-                  <div style={{ width: 7, height: 7, backgroundColor: FUEL_COLORS[key], transform: "rotate(45deg)", border: "1px solid rgba(255,255,255,0.4)" }} />
-                </div>
-                <span>{FUEL_LABELS[key]}</span>
-              </div>
+              <FuelRow
+                key={key}
+                fuelKey={key}
+                color={FUEL_COLORS[key] ?? "#94a3b8"}
+                label={FUEL_LABELS[key] ?? key.replace(/_/g, " ")}
+                count={queueCounts[key] ?? 0}
+                active={queueFuels.has(key)}
+                onToggle={() => toggleSet(setQueueFuels, key)}
+                shape="diamond"
+              />
             ))}
+          </LayerSection>
 
-            {/* Transmission lines voltage */}
-            {showTransmission && (
-              <>
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-1.5 pt-2 border-t border-border">
-                  Transmission <span className="font-normal normal-case">(HIFLD ≥100kV)</span>
-                </div>
-                {VOLTAGE_BANDS.map(band => {
-                  const active = txVoltageFilters.size === 0 || txVoltageFilters.has(band.label);
-                  return (
-                    <div key={band.label} className={`flex items-center gap-2 text-xs transition-opacity ${active ? "opacity-100" : "opacity-30"}`}>
-                      <div className="shrink-0 rounded" style={{ width: 20, height: Math.max(band.weight, 1.5) + 1, backgroundColor: band.color, opacity: 0.9 }} />
-                      <span>{band.label}</span>
-                    </div>
-                  );
-                })}
-                <p className="text-xs text-muted-foreground mt-1">
-                  Source: HIFLD Open Data · AC in service
-                </p>
-              </>
+          {/* Transmission Lines */}
+          <LayerSection
+            title="Transmission Lines"
+            subtitle={
+              txLines
+                ? `${(filteredTxLines?.features.length ?? 0).toLocaleString()} / ${txLines.features.length.toLocaleString()} lines`
+                : txLoading
+                ? "Loading from HIFLD…"
+                : "≥100kV backbone, HIFLD"
+            }
+            icon={<Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />}
+            enabled={showTransmission}
+            onEnable={setShowTransmission}
+            expanded={txExpanded}
+            onExpand={() => setTxExpanded(v => !v)}
+          >
+            {txLoading && (
+              <div className="flex items-center gap-2 py-2 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Loading transmission data…
+              </div>
             )}
+            {!txLoading && VOLTAGE_BANDS.map(band => (
+              <VoltageRow
+                key={band.label}
+                band={band}
+                count={txBandCounts[band.label] ?? 0}
+                active={txVoltageFilters.has(band.label)}
+                onToggle={() => toggleSet(setTxVoltageFilters, band.label)}
+              />
+            ))}
+            {txLines && (
+              <p className="text-[10px] text-muted-foreground mt-1.5 pt-1.5 border-t border-border/40">
+                Source: HIFLD Open Data · AC in service
+              </p>
+            )}
+          </LayerSection>
 
-            {/* Data Centers */}
-            {showDatacenters && (
-              <>
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-1.5 pt-2 border-t border-border">
-                  Data Centers <span className="font-normal normal-case">(square)</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <div className="shrink-0" style={{ width: 10, height: 10, background: DC_COLOR, borderRadius: 2, border: "1.5px solid rgba(255,255,255,0.4)", boxShadow: `0 0 4px ${DC_COLOR}66` }} />
-                  <span>Hyperscale &amp; Colocation</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Source: OpenStreetMap · 408 US facilities
-                </p>
-              </>
-            )}
-          </CardContent>
+          {/* Data Centers */}
+          <LayerSection
+            title="Data Centers"
+            subtitle={
+              dcMarkers.length > 0
+                ? `${dcMarkers.length} facilities`
+                : dcLoading
+                ? "Loading from OSM…"
+                : dcError
+                ? "Load error"
+                : "Hyperscale & colo, US-wide"
+            }
+            icon={<Server className="h-3.5 w-3.5 shrink-0" style={{ color: DC_COLOR }} />}
+            enabled={showDatacenters}
+            onEnable={setShowDatacenters}
+            expanded={dcExpanded}
+            onExpand={() => setDcExpanded(v => !v)}
+            countLabel={dcMarkers.length > 0 ? dcMarkers.length.toString() : undefined}
+          >
+            <div className="flex items-center gap-2 py-[3px] px-1">
+              <div
+                className="shrink-0"
+                style={{ width: 10, height: 10, background: DC_COLOR, borderRadius: 2, border: "1.5px solid rgba(255,255,255,0.4)", boxShadow: `0 0 4px ${DC_COLOR}66` }}
+              />
+              <span className="text-[11px]">Hyperscale &amp; Colocation</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1 px-1">Source: OpenStreetMap</p>
+          </LayerSection>
+
         </Card>
       </div>
     </div>
