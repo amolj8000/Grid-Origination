@@ -352,6 +352,21 @@ paths:
                 items:
                   $ref: "#/components/schemas/CaisoNodeStats"
 
+  /pjm-settlement-points:
+    get:
+      operationId: listPjmSettlementPoints
+      tags: [pjm-node-stats]
+      summary: List distinct PJM settlement point names (resource nodes only, excludes zone/hub nodes)
+      responses:
+        "200":
+          description: List of PJM node names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
   /pjm-node-stats:
     get:
       operationId: listPjmNodeStats
@@ -362,7 +377,6 @@ paths:
           in: query
           schema:
             type: string
-            enum: [Western Hub, Eastern Hub, AEP-Dayton Hub, NI Hub, PSEG, PPL, DOM, BGE]
         - name: year
           in: query
           schema:

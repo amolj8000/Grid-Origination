@@ -145,6 +145,25 @@ router.get("/caiso-node-stats", async (req, res) => {
   }
 });
 
+// PJM Settlement Points — distinct resource node names (excludes zone/hub nodes)
+const PJM_ZONE_NODES = new Set([
+  "Western Hub", "Eastern Hub", "AEP-Dayton Hub", "NI Hub",
+  "PSEG", "PPL", "DOM", "BGE", "PECO", "COMED", "ATSI", "PENELEC",
+]);
+
+router.get("/pjm-settlement-points", async (req, res) => {
+  try {
+    const rows = await db.execute<{ node: string }>(
+      sql`SELECT DISTINCT node FROM pjm_node_stats ORDER BY node`
+    );
+    const resource = rows.rows.map(r => r.node).filter(n => !PJM_ZONE_NODES.has(n));
+    res.json(resource);
+  } catch (err) {
+    req.log.error({ err }, "listPjmSettlementPoints error");
+    res.status(500).json({ error: "internal_error", message: "Failed to list PJM settlement points" });
+  }
+});
+
 // PJM Node Stats
 router.get("/pjm-node-stats", async (req, res) => {
   try {
