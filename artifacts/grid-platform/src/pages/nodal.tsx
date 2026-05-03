@@ -214,7 +214,12 @@ function NodePicker({ value, onChange, nodes, loading, placeholder = "Select nod
   return (
     <Select value={value} onValueChange={v => { onChange(v); setSearch(""); }}>
       <SelectTrigger className="w-[190px] h-7 text-xs font-mono">
-        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <SelectValue placeholder={placeholder} />}
+        {loading && !value
+          ? <Loader2 className="h-3 w-3 animate-spin" />
+          : value && nodes.length === 0
+            ? <span className="truncate">{value}</span>
+            : <SelectValue placeholder={placeholder} />
+        }
       </SelectTrigger>
       <SelectContent className="max-h-72">
         <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border sticky top-0 bg-popover z-10">
@@ -246,8 +251,8 @@ function NodePicker({ value, onChange, nodes, loading, placeholder = "Select nod
 
 // ── ERCOT Node Comparison ─────────────────────────────────────────────────────
 function NodeCompare({ year, priceType }: { year:number; priceType:PriceType }) {
-  const [nodeA, setNodeA] = useState("SUN_PERMIAN_1");
-  const [nodeB, setNodeB] = useState("WTG_AMARILLO_1");
+  const [nodeA, setNodeA] = useState("PERMIAN_SOLAR_1");
+  const [nodeB, setNodeB] = useState("AMARILLO_WIND_1");
   const isDaRt = priceType === "DA-RT";
 
   // Fetch dynamic node list from API (only resource nodes, no zones/hubs)
@@ -313,10 +318,9 @@ function NodeCompare({ year, priceType }: { year:number; priceType:PriceType }) 
 }
 
 // ── CAISO Zone Comparison ─────────────────────────────────────────────────────
-function CaisoCompare({ year }: { year:number }) {
+function CaisoZoneCompare({ year, priceType }: { year:number; priceType:"DA"|"RT" }) {
   const [zoneA, setZoneA] = useState<"NP15"|"SP15"|"ZP26">("NP15");
   const [zoneB, setZoneB] = useState<"NP15"|"SP15"|"ZP26">("SP15");
-  const [priceType, setPriceType] = useState<"DA"|"RT">("DA");
 
   const { data: aData=[], isLoading: la } = useListCaisoNodeStats({ node: zoneA, year });
   const { data: bData=[], isLoading: lb } = useListCaisoNodeStats({ node: zoneB, year });
@@ -329,7 +333,7 @@ function CaisoCompare({ year }: { year:number }) {
       const b = bData.find(r => r.month === month);
       const av = priceType === "DA" ? a?.avgDaPrice : a?.avgRtPrice;
       const bv = priceType === "DA" ? b?.avgDaPrice : b?.avgRtPrice;
-      return { month: m, [zoneA]: av != null ? Number(av.toFixed(2)) : null, [zoneB]: bv != null ? Number(bv.toFixed(2)) : null };
+      return { month: m, [zoneA]: av != null ? Number(Number(av).toFixed(2)) : null, [zoneB]: bv != null ? Number(Number(bv).toFixed(2)) : null };
     }).filter(r => r[zoneA] !== null || r[zoneB] !== null);
   }, [aData, bData, zoneA, zoneB, priceType]);
 
@@ -337,26 +341,16 @@ function CaisoCompare({ year }: { year:number }) {
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div>
-            <CardTitle className="text-base">CAISO Zone Comparison</CardTitle>
-            <CardDescription className="text-xs mt-0.5">{priceType === "DA" ? "Day-Ahead" : "Real-Time"} LMP · {year}</CardDescription>
-          </div>
+          <CardTitle className="text-sm font-semibold">Zone Comparison</CardTitle>
           <div className="flex gap-2 flex-wrap">
             <Select value={zoneA} onValueChange={v=>setZoneA(v as typeof zoneA)}>
-              <SelectTrigger className="w-[150px] h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-[130px] h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>{CAISO_ZONES.map(z=><SelectItem key={z} value={z} className="text-xs">{CAISO_LABELS[z]}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={zoneB} onValueChange={v=>setZoneB(v as typeof zoneB)}>
-              <SelectTrigger className="w-[150px] h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-[130px] h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>{CAISO_ZONES.map(z=><SelectItem key={z} value={z} className="text-xs">{CAISO_LABELS[z]}</SelectItem>)}</SelectContent>
             </Select>
-            <div className="flex rounded-md overflow-hidden border border-border">
-              {(["DA","RT"] as const).map(pt=>(
-                <button key={pt} onClick={()=>setPriceType(pt)}
-                  className={`px-3 py-1 text-xs font-medium transition-colors ${priceType===pt?"bg-primary text-primary-foreground":"text-muted-foreground hover:text-foreground"}`}
-                >{pt}</button>
-              ))}
-            </div>
           </div>
         </div>
       </CardHeader>
@@ -364,6 +358,69 @@ function CaisoCompare({ year }: { year:number }) {
         <PairNodeChart
           title="CAISO" description=""
           data={chartData} keys={[zoneA, zoneB]} colors={[C.teal, C.amber]}
+          loading={la || lb}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── CAISO Node Comparison (resource nodes) ────────────────────────────────────
+function CaisoNodeCompare({ year, priceType }: { year:number; priceType:"DA"|"RT"|"DA-RT" }) {
+  const [nodeA, setNodeA] = useState("TEHACHAPI_WIND_1");
+  const [nodeB, setNodeB] = useState("DESERT_SUNLIGHT_1");
+  const isDaRt = priceType === "DA-RT";
+
+  const [nodeList, setNodeList] = useState<string[]>([]);
+  const [nodeListLoading, setNodeListLoading] = useState(false);
+  const fetched = useRef(false);
+  useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
+    setNodeListLoading(true);
+    fetch("/api/caiso-settlement-points")
+      .then(r => r.json())
+      .then((data: unknown) => {
+        if (Array.isArray(data)) setNodeList(data as string[]);
+        setNodeListLoading(false);
+      })
+      .catch(() => setNodeListLoading(false));
+  }, []);
+
+  const { data: aData=[], isLoading: la } = useListCaisoNodeStats({ node: nodeA, year });
+  const { data: bData=[], isLoading: lb } = useListCaisoNodeStats({ node: isDaRt ? nodeA : nodeB, year });
+
+  const chartData = useMemo(() => {
+    if (!aData.length) return [];
+    const bSrc = isDaRt ? aData : bData;
+    return buildPairChart(aData, bSrc, priceType, nodeA, nodeB);
+  }, [aData, bData, nodeA, nodeB, priceType, isDaRt]);
+
+  const keys = isDaRt ? [`${nodeA} DA`, `${nodeA} RT`] : [nodeA, nodeB];
+  const colors = [C.purple, C.green];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-semibold">Node Comparison</CardTitle>
+            {nodeList.length > 0 && (
+              <span className="text-xs text-muted-foreground">{nodeList.length} nodes</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <NodePicker value={nodeA} onChange={setNodeA} nodes={nodeList} loading={nodeListLoading} />
+            {!isDaRt && (
+              <NodePicker value={nodeB} onChange={setNodeB} nodes={nodeList} loading={nodeListLoading} />
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <PairNodeChart
+          title="Node" description=""
+          data={chartData} keys={keys} colors={colors}
           loading={la || lb}
         />
       </CardContent>
@@ -444,11 +501,88 @@ export default function NodalAnalysis() {
               <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
               <SelectContent>{YEARS.map(y=><SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
             </Select>
+
+            <span className="text-sm font-medium text-muted-foreground ml-2">Price:</span>
+            <div className="flex rounded-md overflow-hidden border border-border">
+              {(["DA","RT","DA-RT"] as const).map(pt=>(
+                <button key={pt} onClick={()=>setPriceType(pt)}
+                  className={`px-4 py-1.5 text-sm font-medium transition-colors ${priceType===pt ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >{pt}</button>
+              ))}
+            </div>
+
+            {priceType === "DA-RT" && (
+              <span className="text-xs text-muted-foreground italic">Single node selected — shows DA vs RT</span>
+            )}
           </div>
-          <CaisoCompare year={year} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <CaisoZoneCompare year={year} priceType={priceType === "DA-RT" ? "DA" : priceType} />
+            <CaisoNodeCompare year={year} priceType={priceType} />
+          </div>
+
+          <CaisoSpreadSummary year={year} />
         </>
       )}
     </div>
+  );
+}
+
+// ── CAISO Spread Summary ──────────────────────────────────────────────────────
+function CaisoSpreadSummary({ year }: { year:number }) {
+  const { data: np15=[], isLoading: l1 } = useListCaisoNodeStats({ node:"NP15", year });
+  const { data: sp15=[], isLoading: l2 } = useListCaisoNodeStats({ node:"SP15", year });
+  const { data: zp26=[], isLoading: l3 } = useListCaisoNodeStats({ node:"ZP26", year });
+
+  const loading = l1||l2||l3;
+
+  const avgRow = (rows: typeof np15, label: string) => {
+    if (!rows.length) return null;
+    const da = rows.reduce((s,r)=>s+Number(r.avgDaPrice),0)/rows.length;
+    const rt = rows.filter(r=>r.avgRtPrice!=null).reduce((s,r)=>s+Number(r.avgRtPrice),0)/Math.max(1,rows.filter(r=>r.avgRtPrice!=null).length);
+    const spread = da - rt;
+    const negPct = rows.reduce((s,r)=>s+Number(r.negPricePercent??0),0)/rows.length;
+    const vol = rows.reduce((s,r)=>s+Number(r.volatility??0),0)/rows.length;
+    return { label, da, rt, spread, negPct, vol };
+  };
+
+  const tableRows = [
+    avgRow(np15, "NP15 (North)"),
+    avgRow(sp15, "SP15 (South)"),
+    avgRow(zp26, "ZP26 (Central)"),
+  ].filter(Boolean).sort((a,b)=>(b!.da - a!.da));
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">DA–RT Spread Summary — {year} Annual Avg</CardTitle>
+        <CardDescription className="text-xs">Negative spread (RT &lt; DA) is common in CAISO due to solar oversupply; high negative % indicates curtailment risk</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="h-16 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {tableRows.map(r=>(
+              <div key={r!.label} className="rounded-md border border-border p-3 bg-background">
+                <div className="font-mono text-xs font-semibold">{r!.label}</div>
+                <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+                  <span>DA <span className="text-foreground font-medium">${r!.da.toFixed(2)}</span></span>
+                  <span>RT <span className="text-foreground font-medium">${r!.rt.toFixed(2)}</span></span>
+                </div>
+                <div className="mt-1 text-xs font-semibold" style={{ color: r!.spread < -5 ? C.red : r!.spread < 0 ? C.amber : C.teal }}>
+                  Spread ${r!.spread.toFixed(2)}/MWh
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Neg price: <span className="text-foreground">{r!.negPct.toFixed(1)}%</span>
+                  &nbsp;·&nbsp;Vol: <span className="text-foreground">${r!.vol.toFixed(1)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

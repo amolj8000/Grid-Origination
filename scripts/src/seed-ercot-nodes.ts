@@ -344,28 +344,28 @@ function monthlyDa(basePrice: number, month: number, region: string): number {
 }
 
 // ── Seed ─────────────────────────────────────────────────────────────────────
-const YEARS = [2023, 2024];
+const YEARS = [2023, 2024, 2025];
 const BATCH = 500;
 
 async function seed() {
   console.log(`Total resource nodes to seed: ${ALL_NODES.length}`);
-  console.log("Checking existing settlement points...");
+  console.log("Checking existing (settlement_point, year) pairs...");
 
-  const existing = await db.execute<{ settlement_point: string }>(
-    sql`SELECT DISTINCT settlement_point FROM ercot_nodal_stats`
+  const existing = await db.execute<{ settlement_point: string; year: number }>(
+    sql`SELECT DISTINCT settlement_point, year FROM ercot_nodal_stats`
   );
-  const existingSet = new Set(existing.rows.map(r => r.settlement_point));
-  console.log(`Already have ${existingSet.size} settlement points.`);
+  const existingSet = new Set(existing.rows.map(r => `${r.settlement_point}|${r.year}`));
+  console.log(`Already have ${existingSet.size} (node, year) pairs.`);
 
   const rows: Array<typeof ercotNodalStatsTable.$inferInsert> = [];
 
   for (const node of ALL_NODES) {
-    if (existingSet.has(node.name)) continue;
     const basePrice = ZONE_BASE[node.region] ?? 30;
     const basis = RT_BASIS[node.region] ?? -2;
     const negPct = NEG_PCT[node.region] ?? 2;
 
     for (const year of YEARS) {
+      if (existingSet.has(`${node.name}|${year}`)) continue;
       for (let month = 1; month <= 12; month++) {
         const avgDa = monthlyDa(basePrice, month, node.region);
         const basisMult = month >= 4 && month <= 6 ? 1.5 : month >= 11 || month <= 1 ? 0.6 : 1.0;

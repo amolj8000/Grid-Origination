@@ -361,6 +361,14 @@ export const ListErcotNodalStatsResponse = zod.array(
 );
 
 /**
+ * @summary List distinct CAISO settlement point names (resource nodes only, excludes zones)
+ */
+export const ListCaisoSettlementPointsResponseItem = zod.string();
+export const ListCaisoSettlementPointsResponse = zod.array(
+  ListCaisoSettlementPointsResponseItem,
+);
+
+/**
  * @summary List CAISO node stats
  */
 export const ListCaisoNodeStatsQueryParams = zod.object({

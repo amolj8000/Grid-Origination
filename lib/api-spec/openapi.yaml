@@ -308,6 +308,21 @@ paths:
                 items:
                   $ref: "#/components/schemas/ErcotNodalStats"
 
+  /caiso-settlement-points:
+    get:
+      operationId: listCaisoSettlementPoints
+      tags: [caiso-node-stats]
+      summary: List distinct CAISO settlement point names (resource nodes only, excludes zones)
+      responses:
+        "200":
+          description: List of CAISO node names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
   /caiso-node-stats:
     get:
       operationId: listCaisoNodeStats

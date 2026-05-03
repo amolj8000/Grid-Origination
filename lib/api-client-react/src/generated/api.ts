@@ -1196,6 +1196,82 @@ export function useListErcotNodalStats<
 }
 
 /**
+ * @summary List distinct CAISO settlement point names (resource nodes only, excludes zones)
+ */
+export const getListCaisoSettlementPointsUrl = () => {
+  return `/api/caiso-settlement-points`;
+};
+
+export const listCaisoSettlementPoints = async (
+  options?: RequestInit,
+): Promise<string[]> => {
+  return customFetch<string[]>(getListCaisoSettlementPointsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCaisoSettlementPointsQueryKey = () => {
+  return [`/api/caiso-settlement-points`] as const;
+};
+
+export const getListCaisoSettlementPointsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCaisoSettlementPoints>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCaisoSettlementPoints>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCaisoSettlementPointsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCaisoSettlementPoints>>
+  > = ({ signal }) => listCaisoSettlementPoints({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCaisoSettlementPoints>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCaisoSettlementPointsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCaisoSettlementPoints>>
+>;
+export type ListCaisoSettlementPointsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List distinct CAISO settlement point names (resource nodes only, excludes zones)
+ */
+
+export function useListCaisoSettlementPoints<
+  TData = Awaited<ReturnType<typeof listCaisoSettlementPoints>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCaisoSettlementPoints>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCaisoSettlementPointsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary List CAISO node stats
  */
 export const getListCaisoNodeStatsUrl = (params?: ListCaisoNodeStatsParams) => {

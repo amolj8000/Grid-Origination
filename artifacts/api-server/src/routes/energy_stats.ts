@@ -26,6 +26,22 @@ router.get("/ercot-settlement-points", async (req, res) => {
   }
 });
 
+// CAISO Settlement Points — distinct resource node names (excludes zones)
+router.get("/caiso-settlement-points", async (req, res) => {
+  try {
+    const rows = await db.execute<{ node: string }>(
+      sql`SELECT DISTINCT node
+          FROM caiso_node_stats
+          WHERE node NOT IN ('NP15', 'SP15', 'ZP26')
+          ORDER BY node`
+    );
+    res.json(rows.rows.map(r => r.node));
+  } catch (err) {
+    req.log.error({ err }, "listCaisoSettlementPoints error");
+    res.status(500).json({ error: "internal_error", message: "Failed to list CAISO settlement points" });
+  }
+});
+
 // ERCOT Node Stats
 router.get("/ercot-node-stats", async (req, res) => {
   try {
