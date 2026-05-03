@@ -46,20 +46,33 @@ router.get("/caiso-settlement-points", async (req, res) => {
 // ERCOT Node Stats
 router.get("/ercot-node-stats", async (req, res) => {
   try {
-    const parsed = ListErcotNodeStatsQueryParams.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid query", message: parsed.error.message });
-      return;
-    }
-    const { node, year, month } = parsed.data;
+    // Parse manually to support new params without waiting for codegen
+    const { node, nodeType, year, month, sortBy, limit: limitStr } = req.query as Record<string, string | undefined>;
+    const parsedYear = year !== undefined ? Number(year) : undefined;
+    const parsedMonth = month !== undefined ? Number(month) : undefined;
+    const parsedLimit = limitStr !== undefined ? Number(limitStr) : undefined;
+
     const conditions = [];
     if (node) conditions.push(eq(ercotNodeStatsTable.node, node));
-    if (year !== undefined) conditions.push(eq(ercotNodeStatsTable.year, year));
-    if (month !== undefined) conditions.push(eq(ercotNodeStatsTable.month, month));
+    if (nodeType) conditions.push(eq(ercotNodeStatsTable.nodeType, nodeType));
+    if (parsedYear !== undefined) conditions.push(eq(ercotNodeStatsTable.year, parsedYear));
+    if (parsedMonth !== undefined) conditions.push(eq(ercotNodeStatsTable.month, parsedMonth));
 
-    const rows = await db.select().from(ercotNodeStatsTable)
+    let rows = await db.select().from(ercotNodeStatsTable)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(ercotNodeStatsTable.year, ercotNodeStatsTable.month);
+
+    // Apply sort in JS for flexibility
+    if (sortBy === "neg_price_percent") {
+      rows.sort((a, b) => Number(b.negPricePercent ?? 0) - Number(a.negPricePercent ?? 0));
+    } else if (sortBy === "volatility") {
+      rows.sort((a, b) => Number(b.volatility ?? 0) - Number(a.volatility ?? 0));
+    } else if (sortBy === "avg_rt_price") {
+      rows.sort((a, b) => Number(b.avgRtPrice ?? 0) - Number(a.avgRtPrice ?? 0));
+    } else if (sortBy === "price_range") {
+      rows.sort((a, b) => (Number(b.maxPrice ?? 0) - Number(b.minPrice ?? 0)) - (Number(a.maxPrice ?? 0) - Number(a.minPrice ?? 0)));
+    }
+    if (parsedLimit) rows = rows.slice(0, parsedLimit);
 
     res.json(rows.map(r => ({
       ...r,

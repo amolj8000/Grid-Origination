@@ -236,17 +236,31 @@ paths:
     get:
       operationId: listErcotNodeStats
       tags: [ercot-node-stats]
-      summary: List ERCOT hub/zone monthly stats
+      summary: List ERCOT hub/zone/resource-node monthly stats
       parameters:
         - name: node
           in: query
           schema:
             type: string
+        - name: nodeType
+          in: query
+          schema:
+            type: string
+            enum: [hub, load_zone, resource_node]
         - name: year
           in: query
           schema:
             type: integer
         - name: month
+          in: query
+          schema:
+            type: integer
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [neg_price_percent, volatility, avg_rt_price, price_range]
+        - name: limit
           in: query
           schema:
             type: integer
@@ -708,7 +722,7 @@ components:
           type: string
         nodeType:
           type: string
-          enum: [hub, load_zone]
+          enum: [hub, load_zone, resource_node]
         year:
           type: integer
         month:

@@ -1,13 +1,14 @@
 import { useState, useMemo } from "react";
-import { useListErcotNodalStats } from "@workspace/api-client-react";
+import { useListErcotNodalStats, useListErcotNodeStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer, Cell,
-  LineChart, Line, Legend, ReferenceLine, AreaChart, Area,
+  ReferenceLine, AreaChart, Area, Legend,
 } from "recharts";
-import { Loader2 } from "lucide-react";
+import { Loader2, TrendingDown, Zap, Activity, ArrowUpDown } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const YEARS = [2023, 2024, 2025, 2026];
@@ -20,7 +21,6 @@ const C = {
 };
 const TS = { backgroundColor:C.tooltipBg, borderColor:C.tooltipBorder, color:C.tooltipFg };
 
-// Node type classification
 const NODE_TYPE: Record<string, string> = {
   "BES_DALLAS":"bus", "BES_HOUSTON_N":"bus", "BES_HOUSTON_S":"bus",
   "HB_HOUSTON":"hub", "HB_NORTH":"hub", "HB_SOUTH":"hub", "HB_WEST":"hub",
@@ -38,14 +38,13 @@ const NODE_TYPE_LABEL: Record<string, string> = {
   hub:"Hub", zone:"Load Zone", bus:"Bus Node", solar:"Solar Gen", wind:"Wind Gen",
 };
 
-// Heatmap cell color based on spread value
 function spreadColor(spread: number): string {
-  if (spread <= 0) return "rgba(34,197,94,0.25)";   // negative/zero = green (RT > DA)
-  if (spread < 2)  return "rgba(20,184,166,0.22)";  // tiny spread = teal
-  if (spread < 4)  return "rgba(245,158,11,0.28)";  // small = amber
-  if (spread < 7)  return "rgba(249,115,22,0.38)";  // moderate = orange
-  if (spread < 12) return "rgba(239,68,68,0.48)";   // high = red
-  return "rgba(239,68,68,0.75)";                     // extreme = bright red
+  if (spread <= 0) return "rgba(34,197,94,0.25)";
+  if (spread < 2)  return "rgba(20,184,166,0.22)";
+  if (spread < 4)  return "rgba(245,158,11,0.28)";
+  if (spread < 7)  return "rgba(249,115,22,0.38)";
+  if (spread < 12) return "rgba(239,68,68,0.48)";
+  return "rgba(239,68,68,0.75)";
 }
 function spreadTextColor(spread: number): string {
   if (spread < 4) return C.mutedFg;
@@ -53,16 +52,58 @@ function spreadTextColor(spread: number): string {
   return C.red;
 }
 
+function negPctColor(pct: number): string {
+  if (pct === 0) return C.teal;
+  if (pct < 5) return C.green;
+  if (pct < 15) return C.amber;
+  if (pct < 25) return C.orange;
+  return C.red;
+}
+
+function volColor(vol: number): string {
+  if (vol < 10) return C.teal;
+  if (vol < 30) return C.amber;
+  if (vol < 60) return C.orange;
+  return C.red;
+}
+
+type SortMetric = "neg_price_percent" | "volatility" | "price_range" | "avg_rt_price";
+
+const SORT_OPTIONS: { value: SortMetric; label: string; icon: React.ReactNode; desc: string }[] = [
+  { value: "neg_price_percent", label: "Curtailment Risk", icon: <TrendingDown className="h-3.5 w-3.5" />, desc: "% hours with negative RT prices" },
+  { value: "volatility",        label: "Price Volatility",  icon: <Activity className="h-3.5 w-3.5" />, desc: "RT price std deviation ($/MWh)" },
+  { value: "price_range",       label: "Price Range",       icon: <ArrowUpDown className="h-3.5 w-3.5" />, desc: "Max − Min RT price ($/MWh)" },
+  { value: "avg_rt_price",      label: "Avg RT Price",      icon: <Zap className="h-3.5 w-3.5" />, desc: "Average RT settlement price ($/MWh)" },
+];
+
+const RANK_MONTHS: { value: string; label: string }[] = [
+  { value: "2026-4", label: "Apr 2026" },
+  { value: "2026-5", label: "May 2026" },
+];
+
 export default function CongestionAnalysis() {
   const [year, setYear] = useState(2025);
   const [selectedNode, setSelectedNode] = useState("WTG_ODESSA");
 
-  // Fetch all settlement point data for the year in one call
+  // Resource node ranking state
+  const [rankSort, setRankSort] = useState<SortMetric>("neg_price_percent");
+  const [rankPeriod, setRankPeriod] = useState("2026-4");
+  const [showTop, setShowTop] = useState(50);
+
+  const [rankYear, rankMonth] = rankPeriod.split("-").map(Number);
+
   const { data: allStats=[], isLoading } = useListErcotNodalStats({ year });
-  // Fetch selected node full year for detail chart
   const { data: nodeDetail=[] } = useListErcotNodalStats({ settlementPoint: selectedNode, year });
 
-  // Compute annual avg DA-RT spread per node
+  // Resource node ranking — uses real CDR 12301 data
+  const { data: resourceNodes=[], isLoading: rankLoading } = useListErcotNodeStats({
+    nodeType: "resource_node",
+    year: rankYear,
+    month: rankMonth,
+    sortBy: rankSort,
+    limit: 200,
+  });
+
   const spreadByNode = useMemo(() => {
     const nodeMap: Record<string, { da:number[]; rt:number[] }> = {};
     for (const row of allStats) {
@@ -80,7 +121,6 @@ export default function CongestionAnalysis() {
       .sort((a, b) => b.spread - a.spread);
   }, [allStats]);
 
-  // Monthly spread heatmap data: node → month → spread
   const heatmap = useMemo(() => {
     const nodeMonthMap: Record<string, Record<number, number>> = {};
     for (const row of allStats) {
@@ -89,7 +129,6 @@ export default function CongestionAnalysis() {
       const rt = row.avgRtPrice != null ? Number(row.avgRtPrice) : da;
       nodeMonthMap[row.settlementPoint][row.month] = da - rt;
     }
-    // Sort nodes by annual avg spread descending
     const orderedNodes = spreadByNode.map(r => r.node);
     return orderedNodes
       .filter(n => nodeMonthMap[n])
@@ -100,7 +139,6 @@ export default function CongestionAnalysis() {
       }));
   }, [allStats, spreadByNode]);
 
-  // Detail chart for selected node
   const detailChart = useMemo(() =>
     nodeDetail
       .sort((a, b) => a.month - b.month)
@@ -113,7 +151,20 @@ export default function CongestionAnalysis() {
     [nodeDetail]
   );
 
-  const maxSpread = spreadByNode[0]?.spread ?? 10;
+  // Summary stats for resource nodes
+  const rankSummary = useMemo(() => {
+    if (!resourceNodes.length) return null;
+    const negPcts = resourceNodes.map(r => Number(r.negPricePercent ?? 0));
+    const vols = resourceNodes.map(r => Number(r.volatility ?? 0));
+    const highCurtailment = resourceNodes.filter(r => Number(r.negPricePercent ?? 0) > 10).length;
+    return {
+      total: resourceNodes.length,
+      avgNegPct: negPcts.reduce((s,v)=>s+v,0)/negPcts.length,
+      avgVol: vols.reduce((s,v)=>s+v,0)/vols.length,
+      highCurtailment,
+      top: resourceNodes[0],
+    };
+  }, [resourceNodes]);
 
   return (
     <div className="p-8 h-full overflow-auto space-y-6">
@@ -181,7 +232,6 @@ export default function CongestionAnalysis() {
 
       {/* Node Detail + Heatmap row */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        {/* Node Detail */}
         <Card className="xl:col-span-2">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -226,7 +276,6 @@ export default function CongestionAnalysis() {
           </CardContent>
         </Card>
 
-        {/* Heatmap */}
         <Card className="xl:col-span-3">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">DA–RT Spread Heatmap · {year} ($/MWh)</CardTitle>
@@ -309,6 +358,179 @@ export default function CongestionAnalysis() {
           ))}
         </div>
       )}
+
+      {/* ── RESOURCE NODE RANKING ─────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-border">
+        <div>
+          <h2 className="text-lg font-semibold">Resource Node Risk Ranking</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            804 ERCOT settlement points · real RT data from CDR Report 12301 · ranked by basis risk signal
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <Select value={rankPeriod} onValueChange={setRankPeriod}>
+            <SelectTrigger className="h-7 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>{RANK_MONTHS.map(m=><SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={String(showTop)} onValueChange={v=>setShowTop(Number(v))}>
+            <SelectTrigger className="h-7 w-[90px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[25,50,100,200].map(n=><SelectItem key={n} value={String(n)} className="text-xs">Top {n}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Sort metric tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {SORT_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => setRankSort(opt.value)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+              rankSort === opt.value
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground"
+            }`}
+          >
+            {opt.icon}
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Summary KPIs */}
+      {rankSummary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-xl font-bold" style={{ color: C.red }}>{rankSummary.total}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Total resource nodes</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-xl font-bold" style={{ color: negPctColor(rankSummary.avgNegPct) }}>
+                {rankSummary.avgNegPct.toFixed(1)}%
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">Avg negative-price hours</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-xl font-bold" style={{ color: volColor(rankSummary.avgVol) }}>
+                ${rankSummary.avgVol.toFixed(1)}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">Avg RT volatility (σ)</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-xl font-bold font-mono" style={{ color: C.orange }}>
+                {rankSummary.highCurtailment}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">Nodes with &gt;10% neg-price hrs</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Ranking Table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <CardTitle className="text-sm">
+                {SORT_OPTIONS.find(o=>o.value===rankSort)?.label} Ranking ·{" "}
+                {RANK_MONTHS.find(m=>m.value===rankPeriod)?.label}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {SORT_OPTIONS.find(o=>o.value===rankSort)?.desc} · showing top {showTop} of {resourceNodes.length} nodes
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="text-xs font-mono text-teal-400 border-teal-400/30">
+              CDR 12301 · Real Data
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {rankLoading ? (
+            <div className="h-40 flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : resourceNodes.length === 0 ? (
+            <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">
+              No resource node data for this period
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left text-muted-foreground pb-2 pr-2 w-6">#</th>
+                    <th className="text-left text-muted-foreground pb-2 pr-4 font-mono">Node</th>
+                    <th className="text-right text-muted-foreground pb-2 pr-4">
+                      <span title="% hours with negative RT price">Neg-Price %</span>
+                    </th>
+                    <th className="text-right text-muted-foreground pb-2 pr-4">
+                      <span title="RT price standard deviation">Volatility σ</span>
+                    </th>
+                    <th className="text-right text-muted-foreground pb-2 pr-4">
+                      <span title="Max - Min RT price">Price Range</span>
+                    </th>
+                    <th className="text-right text-muted-foreground pb-2 pr-4">Avg RT</th>
+                    <th className="text-right text-muted-foreground pb-2 pr-4">On-Peak</th>
+                    <th className="text-right text-muted-foreground pb-2">Off-Peak</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resourceNodes.slice(0, showTop).map((row, i) => {
+                    const negPct = Number(row.negPricePercent ?? 0);
+                    const vol = Number(row.volatility ?? 0);
+                    const minP = Number(row.minPrice ?? 0);
+                    const maxP = Number(row.maxPrice ?? 0);
+                    const range = maxP - minP;
+                    const avgRt = Number(row.avgRtPrice ?? 0);
+                    const onPeak = Number(row.onPeakAvg ?? 0);
+                    const offPeak = Number(row.offPeakAvg ?? 0);
+                    return (
+                      <tr key={row.node} className="border-b border-border/40 hover:bg-white/5 transition-colors">
+                        <td className="py-1.5 pr-2 text-muted-foreground">{i+1}</td>
+                        <td className="py-1.5 pr-4 font-mono font-medium" style={{ color: C.teal }}>
+                          {row.node}
+                        </td>
+                        <td className="py-1.5 pr-4 text-right font-semibold"
+                            style={{ color: negPctColor(negPct) }}>
+                          {negPct.toFixed(1)}%
+                        </td>
+                        <td className="py-1.5 pr-4 text-right"
+                            style={{ color: volColor(vol) }}>
+                          ${vol.toFixed(1)}
+                        </td>
+                        <td className="py-1.5 pr-4 text-right text-muted-foreground">
+                          ${range.toFixed(0)}
+                          <span className="text-muted-foreground/50 text-[10px] ml-1">
+                            ({minP.toFixed(0)}→{maxP.toFixed(0)})
+                          </span>
+                        </td>
+                        <td className="py-1.5 pr-4 text-right text-foreground">
+                          ${avgRt.toFixed(2)}
+                        </td>
+                        <td className="py-1.5 pr-4 text-right" style={{ color: C.amber }}>
+                          ${onPeak.toFixed(2)}
+                        </td>
+                        <td className="py-1.5 text-right" style={{ color: C.blue }}>
+                          ${offPeak.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -297,14 +297,17 @@ export const DeleteScreeningParams = zod.object({
  */
 export const ListErcotNodeStatsQueryParams = zod.object({
   node: zod.coerce.string().optional(),
+  nodeType: zod.enum(["hub", "load_zone", "resource_node"]).optional(),
   year: zod.coerce.number().optional(),
   month: zod.coerce.number().optional(),
+  sortBy: zod.enum(["neg_price_percent", "volatility", "avg_rt_price", "price_range"]).optional(),
+  limit: zod.coerce.number().optional(),
 });
 
 export const ListErcotNodeStatsResponseItem = zod.object({
   id: zod.number(),
   node: zod.string(),
-  nodeType: zod.enum(["hub", "load_zone"]),
+  nodeType: zod.enum(["hub", "load_zone", "resource_node"]),
   year: zod.number(),
   month: zod.number(),
   avgDaPrice: zod.number(),

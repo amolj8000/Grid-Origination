@@ -360,8 +360,11 @@ export const ListCandidatesStatus = {
 
 export type ListErcotNodeStatsParams = {
   node?: string;
+  nodeType?: "hub" | "load_zone" | "resource_node";
   year?: number;
   month?: number;
+  sortBy?: "neg_price_percent" | "volatility" | "avg_rt_price" | "price_range";
+  limit?: number;
 };
 
 export type ListErcotSettlementPointsParams = {

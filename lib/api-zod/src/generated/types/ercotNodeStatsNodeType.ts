@@ -12,4 +12,5 @@ export type ErcotNodeStatsNodeType =
 export const ErcotNodeStatsNodeType = {
   hub: "hub",
   load_zone: "load_zone",
+  resource_node: "resource_node",
 } as const;
