@@ -23,8 +23,10 @@ const TS = { backgroundColor:C.tooltipBg, borderColor:C.tooltipBorder, color:C.t
 // Node type classification
 const NODE_TYPE: Record<string, string> = {
   "BES_DALLAS":"bus", "BES_HOUSTON_N":"bus", "BES_HOUSTON_S":"bus",
-  "HB_HOUSTON":"hub", "HB_NORTH":"hub", "HB_WEST":"hub",
+  "HB_HOUSTON":"hub", "HB_NORTH":"hub", "HB_SOUTH":"hub", "HB_WEST":"hub",
+  "HB_BUSAVG":"hub", "HB_HUBAVG":"hub", "HB_PAN":"hub",
   "LZ_HOUSTON":"zone", "LZ_NORTH":"zone", "LZ_SOUTH":"zone", "LZ_WEST":"zone",
+  "LZ_AEN":"zone", "LZ_CPS":"zone", "LZ_LCRA":"zone", "LZ_RAYBN":"zone",
   "SUN_MIDLAND":"solar", "SUN_PERMIAN":"solar", "SUN_RIO_GRANDE":"solar",
   "WTG_ABILENE":"wind", "WTG_AMARILLO":"wind", "WTG_LUBBOCK":"wind", "WTG_ODESSA":"wind",
 };

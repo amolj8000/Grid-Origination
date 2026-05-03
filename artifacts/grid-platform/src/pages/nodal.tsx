@@ -15,8 +15,8 @@ import { Loader2 } from "lucide-react";
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const YEARS = [2022, 2023, 2024, 2025, 2026];
 
-const ERCOT_ZONES = ["LZ_HOUSTON","LZ_NORTH","LZ_SOUTH","LZ_WEST"];
-const ERCOT_HUBS  = ["HB_HOUSTON","HB_NORTH","HB_SOUTH","HB_WEST"];
+const ERCOT_ZONES = ["LZ_HOUSTON","LZ_NORTH","LZ_SOUTH","LZ_WEST","LZ_AEN","LZ_CPS","LZ_LCRA","LZ_RAYBN"];
+const ERCOT_HUBS  = ["HB_HOUSTON","HB_NORTH","HB_SOUTH","HB_WEST","HB_BUSAVG","HB_HUBAVG","HB_PAN"];
 const ERCOT_NODES = [
   "BES_DALLAS","BES_HOUSTON_N","BES_HOUSTON_S",
   "HB_HOUSTON","HB_NORTH","HB_WEST",
