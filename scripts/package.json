@@ -12,6 +12,8 @@
     "seed-pjm-nodes": "tsx ./src/seed-pjm-nodes.ts",
     "seed-queue": "tsx ./src/seed-queue.ts",
     "seed-queue-real": "tsx ./src/seed-queue-real.ts",
+    "seed-ercot-real": "tsx ./src/seed-ercot-real.ts",
+    "seed-caiso-real": "tsx ./src/seed-caiso-real.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

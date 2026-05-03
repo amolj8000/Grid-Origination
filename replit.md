@@ -79,13 +79,31 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 
 | Dataset | Status | Notes |
 |---------|--------|-------|
-| ERCOT Hub/Zone prices | Partial real | Real CDR Jun2024–Apr2025; synthetic rest. 15 nodes. |
-| ERCOT Resource nodes | Synthetic | 17 settlement points with modeled RT basis. Need ERCOT API client_id for real data. |
-| CAISO prices | Synthetic | Modeled from EIA benchmarks 2022–2026 |
-| PJM prices | Synthetic | Modeled from published benchmarks 2022–2026 |
-| Interconnection Queue | Seeded | Seeded from ISO queue reports |
-| EIA 860 projects | **Live (2024)** | 3,875 operable generators >1 MW from EIA Form 860 2024 "Operable" sheet. ISO mapped via BA codes (ERCO/CISO/PJM). Commissioning years 1899–2024. |
-| Candidate scoring | Partial | Scoring engine live on all 3,875 EIA 860 plants (50/100 placeholders). Real signal scoring from nodal+queue data planned. |
+| ERCOT Hub/Zone prices (RT+DA) | **REAL** | 100% real from ERCOT CDR reports 13061+13060 (public, no auth). 15 LZ/HB nodes × 28 months (Jan 2024–Apr 2026). 420 rows. Script: `seed-ercot-real`. |
+| ERCOT Resource nodes | Synthetic | 780 individual settlement points with modeled RT basis. ERCOT API `client_id` needed for real resource node data. |
+| CAISO prices (DA) | **REAL** | 100% real from CAISO OASIS PRC_LMP (public API). SP15 + NP15 trading hubs, 28 months each (Jan 2024–Apr 2026). 56 rows. Script: `seed-caiso-real`. |
+| PJM prices | Calibrated model | No publicly accessible real-time PJM node prices (requires PJM account). Values calibrated to published monthly hub averages. 14,336 rows. |
+| Interconnection Queue | Seeded | CAISO queue from public ISO data (2,433 real projects); ERCOT/PJM synthetic. |
+| EIA 860 projects | **Live (2024)** | 3,875 operable generators >1 MW from EIA Form 860 2024 "Operable" sheet. ISO mapped via BA codes (ERCO/CISO/PJM). |
+| Candidate scoring | Partial | Scoring engine live on all 3,875 EIA 860 plants. Real signal scoring from nodal+queue data planned. |
+
+## Real Data Sources
+
+### ERCOT (seed-ercot-real)
+- **RTM prices**: CDR Report 13061 — `RTMLZHBSPP_{YYYY}.xlsx` annual files
+  - doclookupId: 2024=1065471230, 2025=1177737535, 2026=1220061372
+- **DAM prices**: CDR Report 13060 — `DAMLZHBSPP_{YYYY}.xlsx` annual files
+  - doclookupId: 2024=1065468714, 2025=1177667469, 2026=1219858972
+- **Base URL**: `https://www.ercot.com/misdownload/servlets/mirDownload?mimic_duns=000000000&doclookupId=`
+- ZIP64 format — uses custom Node.js ZIP64 extractor (central directory parsing)
+- 15-min interval data (RTM) / hourly (DAM), 12-sheet annual XLSX
+
+### CAISO (seed-caiso-real)
+- **DA LMP**: CAISO OASIS PRC_LMP query, market_run_id=DAM
+- **URL**: `https://oasis.caiso.com/oasisapi/SingleZip?queryname=PRC_LMP&version=1&market_run_id=DAM&...`
+- **Valid nodes**: `TH_SP15_GEN-APND` (SP15), `TH_NP15_GEN-APND` (NP15) — others return 114-byte error
+- Streaming ZIP (compSize=0 in local header) — uses central directory for actual compSize
+- Gap-fill mode: skips already-populated months, retries rate-limited months
 
 ## ERCOT API Credentials
 
