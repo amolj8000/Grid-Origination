@@ -10,6 +10,7 @@
     "seed-ercot-nodes": "tsx ./src/seed-ercot-nodes.ts",
     "seed-caiso-nodes": "tsx ./src/seed-caiso-nodes.ts",
     "seed-pjm-nodes": "tsx ./src/seed-pjm-nodes.ts",
+    "seed-queue": "tsx ./src/seed-queue.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

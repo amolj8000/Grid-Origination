@@ -120,7 +120,8 @@ const HIFLD_PARAMS =
   "&outFields=VOLTAGE%2CTYPE" +
   "&f=geojson" +
   "&resultRecordCount=2000";
-const HIFLD_PAGES = [0, 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000]; // ≥100kV
+// 21 pages × 2000 = 42,000 — covers all ~41,237 HIFLD features ≥100kV (TX, CA, etc in tail)
+const HIFLD_PAGES = Array.from({ length: 21 }, (_, i) => i * 2000);
 
 // ── OpenStreetMap datacenter fetch config ─────────────────────────────────
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -457,7 +458,7 @@ export default function MapWorkspace() {
         {txLoading && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-card/95 px-3 py-2 rounded-full shadow border text-xs">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-            Loading transmission lines (~8,000 features)…
+            Loading transmission lines (~41,000 features)…
           </div>
         )}
         {txError && (

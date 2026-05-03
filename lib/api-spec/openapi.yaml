@@ -418,7 +418,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: 200
+            default: 2000
       responses:
         "200":
           description: Queue projects
