@@ -84,8 +84,8 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 | CAISO prices | Synthetic | Modeled from EIA benchmarks 2022–2026 |
 | PJM prices | Synthetic | Modeled from published benchmarks 2022–2026 |
 | Interconnection Queue | Seeded | Seeded from ISO queue reports |
-| EIA 860 projects | Planned | Need bulk import of Form 860 for ERCOT/CAISO/PJM operating+planned plants |
-| Candidate scoring | Partial | Mock candidates seeded; real scoring from EIA 860 + nodal planned |
+| EIA 860 projects | **Live (2024)** | 3,875 operable generators >1 MW from EIA Form 860 2024 "Operable" sheet. ISO mapped via BA codes (ERCO/CISO/PJM). Commissioning years 1899–2024. |
+| Candidate scoring | Partial | Scoring engine live on all 3,875 EIA 860 plants (50/100 placeholders). Real signal scoring from nodal+queue data planned. |
 
 ## ERCOT API Credentials
 

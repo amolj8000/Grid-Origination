@@ -76,10 +76,9 @@ const TABS = [
         color: C.teal,
         status: "live",
         summary:
-          "Interactive Leaflet map showing candidate project pins (from EIA 860) and interconnection queue projects. Visually identify geographic clusters, transmission corridors, and candidate density by zone.",
-        dataSource: "EIA 860 projects (target) + queue DB",
+          "Interactive Leaflet map showing 3,875 operational plants from EIA Form 860 (2024) and interconnection queue projects. Filter by market, fuel type, and capacity range (1 MW–3 GW). Click any plant to see its COD, capacity, owner, and operational status.",
+        dataSource: "EIA Form 860 2024 — Operable units only, >1 MW, ERCO/CISO/PJM BA codes",
         useCases: ["origination", "siting"],
-        roadmap: "EIA 860 bulk import (Form 860 plant-level data for ERCOT/CAISO/PJM)",
       },
       {
         title: "Rankings",
@@ -385,8 +384,8 @@ export default function PlatformGuide() {
               { label: "CAISO Prices", status: "modeled", detail: "NP15/SP15/ZP26 modeled from EIA benchmarks 2022–2026." },
               { label: "PJM Hub/Zone Prices", status: "modeled", detail: "8 hubs/zones modeled from published PJM/EIA benchmarks 2022–2026." },
               { label: "Interconnection Queue", status: "seeded", detail: "ERCOT/CAISO/PJM queue data seeded. Real API pull planned." },
-              { label: "EIA 860 Project Database", status: "planned", detail: "All Form 860 operating/planned projects for ERCOT, CAISO, PJM. Needs EIA bulk import." },
-              { label: "Candidate Scoring", status: "partial", detail: "Scoring engine live with mock candidates. Real scoring from EIA 860 + nodal data planned." },
+              { label: "EIA 860 Project Database", status: "seeded", detail: "3,875 operable generators >1 MW from EIA Form 860 2024. Filtered by ERCO/CISO/PJM balancing authority codes." },
+              { label: "Candidate Scoring", status: "partial", detail: "Scoring engine live on all 3,875 EIA 860 plants. Real signal scoring from nodal + queue data planned." },
               { label: "Q&A Copilot", status: "planned", detail: "OpenAI integration planned. Will answer questions from platform DB." },
             ].map(item => (
               <div key={item.label} className="flex gap-2 p-2.5 rounded-md bg-card border border-border">
