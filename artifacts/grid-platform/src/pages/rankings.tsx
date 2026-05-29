@@ -34,7 +34,7 @@ const DIMS = [
     label: "Curtailment",
     shortLabel: "Curt",
     color: "#f59e0b",
-    tooltip: "Based on negative-price frequency at the nearest proxy node. High neg-price hours → high curtailment risk → lower score.",
+    tooltip: "ERCOT: mapped to load zone by lat/lon (LZ_WEST/NORTH/SOUTH/HOUSTON) using real CDR 12301 neg-price % (fleet avg 6.42%) + asset-type exposure. Wind/solar in LZ_WEST score lowest (~65). CAISO/PJM: modeled.",
   },
   {
     key: "interconnectionScore" as const,
@@ -84,13 +84,13 @@ const FUEL_COLORS: Record<string, string> = {
 
 const PROXY_NODE_LABEL: Record<string, Record<string, string>> = {
   ERCOT: {
-    wind: "WTG avg (Abilene/Amarillo/Lubbock/Odessa)",
-    solar: "SUN avg (Midland/Permian/Rio Grande)",
-    storage: "LZ avg (North/South/West/Houston)",
-    natural_gas: "HB avg (North/Houston/South/West)",
-    nuclear: "LZ avg (South/Houston)",
-    hydro: "LZ avg (South/Houston)",
-    default: "ERCOT hub/zone avg",
+    wind: "Load zone by lat/lon — wind curtailment highest in LZ_WEST",
+    solar: "Load zone by lat/lon — solar curtailment highest in LZ_SOUTH/LZ_WEST",
+    storage: "Load zone by lat/lon — storage benefits from price dispersion",
+    natural_gas: "Load zone by lat/lon — dispatchable, minimal curtailment exposure",
+    nuclear: "Load zone by lat/lon — baseload, near-zero curtailment risk",
+    hydro: "Load zone by lat/lon — dispatchable, low curtailment risk",
+    default: "ERCOT load zone by lat/lon (CDR 12301 real data)",
   },
   CAISO: {
     default: "NP15 / ZP26 / SP15 by latitude",
@@ -301,8 +301,8 @@ export default function Rankings() {
           <span>
             <span className="font-medium text-foreground">Scoring methodology: </span>
             Curtailment (25%) · Congestion (20%) · Basis Risk (20%) · Price (15%) · Capacity (12%) · Asset Age (8%).{" "}
-            ERCOT uses generation-type proxy nodes (WTG/SUN for wind/solar). CAISO uses NP15/SP15/ZP26 by latitude.
-            PJM uses hub/zone by state. Data: ERCOT hub/zone and CAISO SP15/NP15 DA are real; PJM is still modeled.
+            ERCOT curtailment: real CDR 12301 neg-price % (6.42% fleet avg, Apr–May 2026) + zone mapping by lat/lon (LZ_WEST/NORTH/SOUTH/HOUSTON) + asset-type penalties. CAISO uses NP15/SP15/ZP26 by latitude.
+            PJM uses hub/zone by state. Data: ERCOT hub/zone (2024-2026) and CAISO DA (2024-2026) are real; PJM is modeled.
           </span>
         </div>
 

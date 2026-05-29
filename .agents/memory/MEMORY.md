@@ -1,0 +1,1 @@
+- [ERCOT curtailment scoring](ercot-curtailment-scoring.md) — zone+asset-type scoring wired to real CDR data; run score-ercot-curtailment script to refresh after new node data.
