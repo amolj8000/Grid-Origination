@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   useListErcotNodeStats,
-  useListErcotNodalStats,
   useListCaisoNodeStats,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,7 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, MapPin, Database } from "lucide-react";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const YEARS = [2022, 2023, 2024, 2025, 2026];
@@ -424,6 +423,189 @@ function CaisoNodeCompare({ year, priceType }: { year:number; priceType:"DA"|"RT
   );
 }
 
+// ── ERCOT Resource Node Browser ───────────────────────────────────────────────
+type NodeLocation = {
+  nodeName: string; nodeType: string; loadZone: string | null; hub: string | null;
+  substation: string | null; latitude: number | null; longitude: number | null;
+  locationSource: string; eiaPlantName: string | null;
+  avgDaPrice: number | null; avgRtPrice: number | null; monthsAvailable: number;
+};
+
+const ZONE_COLORS: Record<string, string> = {
+  LZ_WEST: "#f59e0b", LZ_SOUTH: "#14b8a6", LZ_NORTH: "#8b5cf6", LZ_HOUSTON: "#3b82f6",
+};
+
+function NodeLocationsBrowser() {
+  const [nodes, setNodes] = useState<NodeLocation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [zoneFilter, setZoneFilter] = useState<string>("ALL");
+  const [sortBy, setSortBy] = useState<"da_price"|"node_name">("da_price");
+  const fetched = useRef(false);
+
+  useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
+    fetch("/api/ercot-node-locations?nodeType=resource_node&limit=1000")
+      .then(r => r.json())
+      .then((d: unknown) => {
+        if (Array.isArray(d)) setNodes(d as NodeLocation[]);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const zones = useMemo(() => {
+    const zs = Array.from(new Set(nodes.map(n => n.loadZone).filter(Boolean))) as string[];
+    return zs.sort();
+  }, [nodes]);
+
+  const filtered = useMemo(() => {
+    let res = nodes;
+    if (zoneFilter !== "ALL") res = res.filter(n => n.loadZone === zoneFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      res = res.filter(n =>
+        n.nodeName.toLowerCase().includes(q) ||
+        (n.substation ?? "").toLowerCase().includes(q) ||
+        (n.eiaPlantName ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (sortBy === "da_price") return [...res].sort((a,b) => (b.avgDaPrice??0) - (a.avgDaPrice??0));
+    return [...res].sort((a,b) => a.nodeName.localeCompare(b.nodeName));
+  }, [nodes, zoneFilter, search, sortBy]);
+
+  const stats = useMemo(() => {
+    const eia = nodes.filter(n => n.locationSource === "eia_name_match").length;
+    const cent = nodes.filter(n => n.locationSource === "zone_centroid").length;
+    return { total: nodes.length, eia, cent };
+  }, [nodes]);
+
+  const priceColor = (p: number | null) => {
+    if (p == null) return C.mutedFg;
+    if (p > 60) return "#ef4444";
+    if (p > 40) return "#f59e0b";
+    if (p > 25) return "#14b8a6";
+    return "#64748b";
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Database className="h-4 w-4 text-teal-400" />
+              ERCOT Resource Node Browser
+            </CardTitle>
+            <CardDescription className="text-xs mt-0.5">
+              {stats.total} nodes · ERCOT Bus Mapping (CDR 10008) via gridstatus library ·{" "}
+              <span className="text-teal-400">{stats.eia} EIA-geolocated</span> ·{" "}
+              <span className="text-muted-foreground">{stats.cent} zone centroid</span> · Apr–May 2026 pricing
+            </CardDescription>
+          </div>
+          <div className="flex gap-2 flex-wrap items-center">
+            <button onClick={()=>setSortBy(sortBy==="da_price"?"node_name":"da_price")}
+              className="text-xs px-3 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors">
+              Sort: {sortBy === "da_price" ? "DA Price ↓" : "Name A–Z"}
+            </button>
+          </div>
+        </div>
+
+        {/* Zone filter tabs */}
+        <div className="flex gap-1 flex-wrap mt-2">
+          {["ALL", ...zones].map(z => (
+            <button key={z} onClick={() => setZoneFilter(z)}
+              className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors border ${
+                zoneFilter === z
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+              style={zoneFilter === z && z !== "ALL" ? { backgroundColor: ZONE_COLORS[z], borderColor: ZONE_COLORS[z] } : {}}>
+              {z === "ALL" ? `All (${nodes.length})` : `${z} (${nodes.filter(n=>n.loadZone===z).length})`}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="flex items-center gap-1.5 mt-2 bg-muted/30 border border-border rounded-md px-2.5 py-1.5">
+          <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+          <input
+            className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            placeholder="Search node, substation, or EIA plant name…"
+            value={search} onChange={e => setSearch(e.target.value)}
+          />
+          {search && <button onClick={()=>setSearch("")} className="text-muted-foreground hover:text-foreground text-xs">✕</button>}
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {loading ? (
+          <div className="h-32 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground mb-2">
+              Showing {Math.min(filtered.length, 100)} of {filtered.length} nodes
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left py-1.5 pr-3 font-medium">Node</th>
+                    <th className="text-left py-1.5 pr-3 font-medium">Zone</th>
+                    <th className="text-left py-1.5 pr-3 font-medium">Substation</th>
+                    <th className="text-right py-1.5 pr-3 font-medium">DA Avg</th>
+                    <th className="text-right py-1.5 pr-3 font-medium">RT Avg</th>
+                    <th className="text-left py-1.5 font-medium">Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.slice(0, 100).map(n => (
+                    <tr key={n.nodeName} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                      <td className="py-1.5 pr-3 font-mono text-foreground">{n.nodeName}</td>
+                      <td className="py-1.5 pr-3">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                          style={{ backgroundColor: `${ZONE_COLORS[n.loadZone??""]}22`, color: ZONE_COLORS[n.loadZone??""] ?? C.mutedFg }}>
+                          {n.loadZone ?? "—"}
+                        </span>
+                      </td>
+                      <td className="py-1.5 pr-3 text-muted-foreground font-mono">{n.substation ?? "—"}</td>
+                      <td className="py-1.5 pr-3 text-right font-medium tabular-nums"
+                        style={{ color: priceColor(n.avgDaPrice) }}>
+                        {n.avgDaPrice != null ? `$${n.avgDaPrice.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">
+                        {n.avgRtPrice != null ? `$${n.avgRtPrice.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="py-1.5">
+                        {n.locationSource === "eia_name_match" ? (
+                          <span className="flex items-center gap-1 text-teal-400">
+                            <MapPin className="h-2.5 w-2.5" />
+                            <span className="text-[10px]">{n.eiaPlantName ? n.eiaPlantName.slice(0, 22) : "EIA match"}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">{n.loadZone} centroid</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filtered.length > 100 && (
+              <div className="mt-2 text-xs text-muted-foreground text-center">
+                {filtered.length - 100} more — refine search or filter by zone
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function NodalAnalysis() {
   const [iso, setIso] = useState<"ERCOT"|"CAISO">("ERCOT");
@@ -485,6 +667,9 @@ export default function NodalAnalysis() {
 
           {/* Spread summary table */}
           <SpreadSummary year={year} />
+
+          {/* Resource Node Browser — 804 nodes with zones from ERCOT bus mapping */}
+          <NodeLocationsBrowser />
         </>
       )}
 

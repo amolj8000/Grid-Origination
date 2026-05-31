@@ -2,3 +2,4 @@
 - [CAISO curtailment scoring](caiso-curtailment-scoring.md) — zone+asset-type scoring from real OASIS data; ZP26/SP15 solar score ~68-73, NP15 solar ~92; run score-caiso-curtailment to refresh.
 - [Congestion scoring](congestion-scoring.md) — ERCOT uses hub DA basis (HB_PAN $20.38 → HB_HOUSTON $35.42, CDR 13060); CAISO uses zone DA basis + volatility (OASIS); both real 28-month data.
 - [Queue-based nodal assignment](nodal-queue-assignment.md) — Haversine nearest-neighbor from EIA 860 plant → queue_projects gives per-plant node (11 ERCOT, NP15/SP15 CAISO); replaces 4-zone bounding box; LZ_LCRA ($36.62) was previously mis-grouped.
+- [ERCOT node location data](ercot-node-locations.md) — ercot_node_locations table (819 rows): 804 resource nodes with exact zone from ERCOT bus mapping (CDR 10008 via gridstatus Python lib, no auth), 110 EIA-geolocated, 694 zone centroid; gridstatus.io datasets API requires key but Python lib is free.

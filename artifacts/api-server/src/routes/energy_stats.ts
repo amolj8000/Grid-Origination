@@ -211,4 +211,72 @@ router.get("/pjm-node-stats", async (req, res) => {
   }
 });
 
+// ERCOT Node Locations — bus mapping zone + EIA lat/lon + pricing summary
+// Sourced from: ERCOT CDR 10008 (bus mapping via gridstatus), EIA 860 name match
+router.get("/ercot-node-locations", async (req, res) => {
+  type NodeLocRow = {
+    node_name: string; node_type: string; load_zone: string | null; hub: string | null;
+    substation: string | null; latitude: number | null; longitude: number | null;
+    location_source: string; eia_plant_name: string | null;
+    avg_da_price: number | null; avg_rt_price: number | null; months_available: number;
+  };
+  try {
+    const { zone, nodeType, limit: limitStr } = req.query as Record<string, string | undefined>;
+    const parsedLimit = Math.min(limitStr ? Number(limitStr) : 1000, 2000);
+
+    let rows: { rows: NodeLocRow[] };
+
+    if (zone && nodeType) {
+      rows = await db.execute<NodeLocRow>(sql`
+        SELECT node_name, node_type, load_zone, hub, substation,
+               latitude::float, longitude::float, location_source, eia_plant_name,
+               avg_da_price::float, avg_rt_price::float, months_available
+        FROM ercot_node_locations
+        WHERE load_zone = ${zone} AND node_type = ${nodeType}
+        ORDER BY avg_da_price DESC NULLS LAST LIMIT ${parsedLimit}`);
+    } else if (zone) {
+      rows = await db.execute<NodeLocRow>(sql`
+        SELECT node_name, node_type, load_zone, hub, substation,
+               latitude::float, longitude::float, location_source, eia_plant_name,
+               avg_da_price::float, avg_rt_price::float, months_available
+        FROM ercot_node_locations
+        WHERE load_zone = ${zone}
+        ORDER BY avg_da_price DESC NULLS LAST LIMIT ${parsedLimit}`);
+    } else if (nodeType) {
+      rows = await db.execute<NodeLocRow>(sql`
+        SELECT node_name, node_type, load_zone, hub, substation,
+               latitude::float, longitude::float, location_source, eia_plant_name,
+               avg_da_price::float, avg_rt_price::float, months_available
+        FROM ercot_node_locations
+        WHERE node_type = ${nodeType}
+        ORDER BY avg_da_price DESC NULLS LAST LIMIT ${parsedLimit}`);
+    } else {
+      rows = await db.execute<NodeLocRow>(sql`
+        SELECT node_name, node_type, load_zone, hub, substation,
+               latitude::float, longitude::float, location_source, eia_plant_name,
+               avg_da_price::float, avg_rt_price::float, months_available
+        FROM ercot_node_locations
+        ORDER BY avg_da_price DESC NULLS LAST LIMIT ${parsedLimit}`);
+    }
+
+    res.json(rows.rows.map(r => ({
+      nodeName: r.node_name,
+      nodeType: r.node_type,
+      loadZone: r.load_zone,
+      hub: r.hub,
+      substation: r.substation,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      locationSource: r.location_source,
+      eiaPlantName: r.eia_plant_name,
+      avgDaPrice: r.avg_da_price,
+      avgRtPrice: r.avg_rt_price,
+      monthsAvailable: r.months_available,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "ercotNodeLocations error");
+    res.status(500).json({ error: "internal_error", message: "Failed to list ERCOT node locations" });
+  }
+});
+
 export default router;
