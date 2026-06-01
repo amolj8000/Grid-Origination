@@ -69,7 +69,7 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 |-------|---------|
 | `candidates` | Core project records with all 10 dimension scores |
 | `screenings` | Saved screening sessions with filters and candidate IDs |
-| `ercot_node_stats` | 15 hub/zone nodes (real) + 804 resource nodes (real CDR 7-day rolling): monthly DA+RT stats |
+| `ercot_node_stats` | 15 hub/zone nodes (real) + 1,108 resource nodes (real ERCOT API bundles, Jan 2024–Apr 2026): monthly DA+RT stats |
 | `ercot_nodal_stats` | 17 ERCOT settlement point nodes (SUN_*, WTG_*, etc.) monthly stats |
 | `caiso_node_stats` | CAISO NP15/SP15/ZP26 monthly DA/RT stats (all real from OASIS) |
 | `pjm_node_stats` | PJM 8 hubs/zones monthly DA/RT stats |
@@ -80,7 +80,7 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 | Dataset | Status | Notes |
 |---------|--------|-------|
 | ERCOT Hub/Zone prices (RT+DA) | **REAL** | 100% real from ERCOT CDR reports 13061+13060 (public, no auth). 15 LZ/HB nodes × 28 months (Jan 2024–Apr 2026). 420 rows. Script: `seed-ercot-real`. |
-| ERCOT Resource nodes | **REAL (recent)** | 804 real resource nodes from CDR Report 12301, RT prices Apr–May 2026 (7-day rolling window). 1608 rows. Script: `seed-ercot-nodes-cdr`. Full 12-month history needs `ERCOT_CLIENT_ID` → `seed-ercot-api`. |
+| ERCOT Resource nodes | **REAL (full history)** | 1,108 real resource nodes from ERCOT API monthly bundles (np6-905-cd RT + np4-190-cd DA). 27,193 rows covering Jan 2024–Apr 2026 (28 months RT, 20 months DA). Python bundle seeder in `scripts/src/`. |
 | CAISO prices (DA) | **REAL** | 100% real from CAISO OASIS PRC_LMP (public API). SP15 + NP15 (28 months each) + ZP26 (14 months). 70 rows. Script: `seed-caiso-real`. |
 | PJM prices | Calibrated model | No publicly accessible real-time PJM node prices (requires PJM account). Values calibrated to published monthly hub averages. 14,336 rows. |
 | Interconnection Queue | Seeded | CAISO queue from public ISO data (2,433 real projects); ERCOT/PJM synthetic. |
