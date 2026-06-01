@@ -112,16 +112,8 @@ const createSquare = (size = 11) =>
     iconAnchor: [size / 2, size / 2],
   });
 
-// ── HIFLD fetch config — 100kV+ to cover all OpenGridWorks voltage bands ─────
-const HIFLD_BASE =
-  "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Electric_Power_Transmission_Lines/FeatureServer/0/query";
-const HIFLD_PARAMS =
-  "where=VOLTAGE%3E%3D100+AND+STATUS%3D%27IN+SERVICE%27" +
-  "&outFields=VOLTAGE%2CTYPE" +
-  "&f=geojson" +
-  "&resultRecordCount=2000";
-// 21 pages × 2000 = 42,000 — covers all ~41,237 HIFLD features ≥100kV (TX, CA, etc in tail)
-const HIFLD_PAGES = Array.from({ length: 21 }, (_, i) => i * 2000);
+// ── Transmission lines from our API (HIFLD 115kV+, pre-loaded into DB) ────────
+const TX_LINES_URL = "/api/transmission-lines?minVoltage=115";
 
 // ── OpenStreetMap datacenter fetch config ─────────────────────────────────
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -347,18 +339,14 @@ export default function MapWorkspace() {
     setTxLoading(true);
     setTxError(null);
 
-    Promise.all(
-      HIFLD_PAGES.map(offset =>
-        fetch(`${HIFLD_BASE}?${HIFLD_PARAMS}&resultOffset=${offset}`)
-          .then(r => r.json() as Promise<FeatureCollection>)
-      )
-    )
-      .then(pages => {
-        const features = pages.flatMap((p: FeatureCollection) => (p.features ?? []).filter((f: Feature) => f.geometry != null));
+    fetch(TX_LINES_URL)
+      .then(r => r.json() as Promise<FeatureCollection>)
+      .then(fc => {
+        const features = (fc.features ?? []).filter((f: Feature) => f.geometry != null);
         setTxLines({ type: "FeatureCollection", features });
         setTxLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         setTxError("Failed to load transmission data");
         setTxLoading(false);
       });
@@ -458,7 +446,7 @@ export default function MapWorkspace() {
         {txLoading && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-card/95 px-3 py-2 rounded-full shadow border text-xs">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-            Loading transmission lines (~41,000 features)…
+            Loading transmission lines (~23,000 features)…
           </div>
         )}
         {txError && (

@@ -279,6 +279,71 @@ router.get("/ercot-node-locations", async (req, res) => {
   }
 });
 
+// Transmission Lines — HIFLD 115kV+ (ERCOT/CAISO/PJM) as GeoJSON FeatureCollection
+// Source: HIFLD Electric Power Transmission Lines (public, no auth)
+router.get("/transmission-lines", async (req, res) => {
+  type TxRow = {
+    hifld_id: string; line_type: string | null; status: string | null;
+    voltage_kv: number | null; volt_class: string | null; owner: string | null;
+    sub_from: string | null; sub_to: string | null; iso: string | null;
+    line_length_km: number | null; coordinates: unknown;
+  };
+  try {
+    const { minVoltage: minVStr, iso, status } = req.query as Record<string, string | undefined>;
+    const minVoltage = minVStr ? Number(minVStr) : 115;
+
+    let rows: { rows: TxRow[] };
+
+    if (iso && status) {
+      rows = await db.execute<TxRow>(sql`
+        SELECT hifld_id, line_type, status, voltage_kv::float, volt_class, owner,
+               sub_from, sub_to, iso, line_length_km::float, coordinates
+        FROM transmission_lines
+        WHERE voltage_kv >= ${minVoltage} AND iso = ${iso} AND status = ${status}
+        ORDER BY voltage_kv DESC NULLS LAST LIMIT 25000`);
+    } else if (iso) {
+      rows = await db.execute<TxRow>(sql`
+        SELECT hifld_id, line_type, status, voltage_kv::float, volt_class, owner,
+               sub_from, sub_to, iso, line_length_km::float, coordinates
+        FROM transmission_lines
+        WHERE voltage_kv >= ${minVoltage} AND iso = ${iso}
+        ORDER BY voltage_kv DESC NULLS LAST LIMIT 25000`);
+    } else {
+      rows = await db.execute<TxRow>(sql`
+        SELECT hifld_id, line_type, status, voltage_kv::float, volt_class, owner,
+               sub_from, sub_to, iso, line_length_km::float, coordinates
+        FROM transmission_lines
+        WHERE voltage_kv >= ${minVoltage}
+        ORDER BY voltage_kv DESC NULLS LAST LIMIT 25000`);
+    }
+
+    // Return as GeoJSON FeatureCollection (properties keyed as VOLTAGE/TYPE to match frontend)
+    const features = rows.rows.map(r => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "LineString" as const,
+        coordinates: Array.isArray(r.coordinates) ? r.coordinates : [],
+      },
+      properties: {
+        VOLTAGE: r.voltage_kv,
+        VOLT_CLASS: r.volt_class,
+        TYPE: r.line_type,
+        STATUS: r.status,
+        OWNER: r.owner,
+        SUB_1: r.sub_from,
+        SUB_2: r.sub_to,
+        ISO: r.iso,
+        LENGTH_KM: r.line_length_km,
+      },
+    }));
+
+    res.json({ type: "FeatureCollection", features });
+  } catch (err) {
+    req.log.error({ err }, "transmissionLines error");
+    res.status(500).json({ error: "internal_error", message: "Failed to load transmission lines" });
+  }
+});
+
 // CAISO Node Locations — ATL_PNODE_MAP zone assignments + EIA 860 lat/lon matching
 // Sourced from: CAISO OASIS ATL_PNODE_MAP (public), EIA 860 name match
 router.get("/caiso-node-locations", async (req, res) => {
