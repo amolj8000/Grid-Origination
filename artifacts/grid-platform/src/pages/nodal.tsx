@@ -606,6 +606,175 @@ function NodeLocationsBrowser() {
   );
 }
 
+// ── CAISO Pricing Node Browser ────────────────────────────────────────────────
+type CaisoNodeLocation = {
+  nodeName: string; nodeType: string; caisoZone: string | null;
+  latitude: number | null; longitude: number | null;
+  locationSource: string; eiaPlantName: string | null;
+  avgDaPrice: number | null; monthsAvailable: number;
+};
+
+const CAISO_ZONE_COLORS: Record<string, string> = {
+  NP15: "#14b8a6", SP15: "#8b5cf6", ZP26: "#f59e0b",
+};
+const CAISO_ZONE_DA: Record<string, number> = { NP15: 43.86, SP15: 38.24, ZP26: 32.41 };
+
+function CaisoNodeLocationsBrowser() {
+  const [nodes, setNodes] = useState<CaisoNodeLocation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [zoneFilter, setZoneFilter] = useState<string>("ALL");
+  const [sortBy, setSortBy] = useState<"node_name"|"zone">("node_name");
+  const fetched = useRef(false);
+
+  useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
+    fetch("/api/caiso-node-locations?nodeType=resource_node&limit=2000")
+      .then(r => r.json())
+      .then((d: unknown) => {
+        if (Array.isArray(d)) setNodes(d as CaisoNodeLocation[]);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    let res = nodes;
+    if (zoneFilter !== "ALL") res = res.filter(n => n.caisoZone === zoneFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      res = res.filter(n =>
+        n.nodeName.toLowerCase().includes(q) ||
+        (n.eiaPlantName ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (sortBy === "zone") return [...res].sort((a,b) => (a.caisoZone??'').localeCompare(b.caisoZone??'') || a.nodeName.localeCompare(b.nodeName));
+    return [...res].sort((a,b) => a.nodeName.localeCompare(b.nodeName));
+  }, [nodes, zoneFilter, search, sortBy]);
+
+  const stats = useMemo(() => ({
+    total: nodes.length,
+    eia: nodes.filter(n => n.locationSource === "eia_name_match").length,
+    np15: nodes.filter(n => n.caisoZone === "NP15").length,
+    sp15: nodes.filter(n => n.caisoZone === "SP15").length,
+    zp26: nodes.filter(n => n.caisoZone === "ZP26").length,
+  }), [nodes]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Database className="h-4 w-4 text-purple-400" />
+              CAISO Pricing Node Browser
+            </CardTitle>
+            <CardDescription className="text-xs mt-0.5">
+              {stats.total} nodes · CAISO OASIS ATL_PNODE_MAP (public) ·{" "}
+              <span className="text-teal-400">{stats.eia} EIA-geolocated</span> ·{" "}
+              <span className="text-muted-foreground">{stats.total - stats.eia} zone centroid</span>
+              {" "}· Zone DA: NP15 ${CAISO_ZONE_DA.NP15} · SP15 ${CAISO_ZONE_DA.SP15} · ZP26 ${CAISO_ZONE_DA.ZP26}/MWh
+            </CardDescription>
+          </div>
+          <button onClick={()=>setSortBy(sortBy==="node_name"?"zone":"node_name")}
+            className="text-xs px-3 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors self-start">
+            Sort: {sortBy === "node_name" ? "Name A–Z" : "Zone"}
+          </button>
+        </div>
+
+        {/* Zone tabs */}
+        <div className="flex gap-1 flex-wrap mt-2">
+          {[
+            { key: "ALL", label: `All (${stats.total})` },
+            { key: "NP15", label: `NP15 North (${stats.np15})` },
+            { key: "SP15", label: `SP15 South (${stats.sp15})` },
+            { key: "ZP26", label: `ZP26 Central (${stats.zp26})` },
+          ].map(z => (
+            <button key={z.key} onClick={() => setZoneFilter(z.key)}
+              className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors border ${
+                zoneFilter === z.key ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+              style={zoneFilter === z.key && z.key !== "ALL"
+                ? { backgroundColor: CAISO_ZONE_COLORS[z.key], borderColor: CAISO_ZONE_COLORS[z.key], color: "#fff" }
+                : {}}>
+              {z.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="flex items-center gap-1.5 mt-2 bg-muted/30 border border-border rounded-md px-2.5 py-1.5">
+          <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+          <input
+            className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            placeholder="Search node name or EIA plant…"
+            value={search} onChange={e => setSearch(e.target.value)}
+          />
+          {search && <button onClick={()=>setSearch("")} className="text-muted-foreground hover:text-foreground text-xs">✕</button>}
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {loading ? (
+          <div className="h-32 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground mb-2">
+              Showing {Math.min(filtered.length, 150)} of {filtered.length} nodes
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left py-1.5 pr-3 font-medium">Node</th>
+                    <th className="text-left py-1.5 pr-3 font-medium">Zone</th>
+                    <th className="text-right py-1.5 pr-3 font-medium">Zone DA</th>
+                    <th className="text-left py-1.5 font-medium">Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.slice(0, 150).map(n => (
+                    <tr key={n.nodeName} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                      <td className="py-1.5 pr-3 font-mono text-foreground">{n.nodeName}</td>
+                      <td className="py-1.5 pr-3">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                          style={{ backgroundColor: `${CAISO_ZONE_COLORS[n.caisoZone??""]}22`, color: CAISO_ZONE_COLORS[n.caisoZone??""] ?? C.mutedFg }}>
+                          {n.caisoZone ?? "—"}
+                        </span>
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-medium tabular-nums text-teal-400">
+                        {n.caisoZone ? `$${CAISO_ZONE_DA[n.caisoZone].toFixed(2)}` : "—"}
+                      </td>
+                      <td className="py-1.5">
+                        {n.locationSource === "eia_name_match" ? (
+                          <span className="flex items-center gap-1 text-teal-400">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />
+                            <span className="text-[10px] truncate max-w-[180px]">{n.eiaPlantName ?? "EIA match"}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">{n.caisoZone} centroid</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filtered.length > 150 && (
+              <div className="mt-2 text-xs text-muted-foreground text-center">
+                {filtered.length - 150} more — refine search or filter by zone
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function NodalAnalysis() {
   const [iso, setIso] = useState<"ERCOT"|"CAISO">("ERCOT");
@@ -703,6 +872,9 @@ export default function NodalAnalysis() {
           </div>
 
           <CaisoSpreadSummary year={year} />
+
+          {/* CAISO Pricing Node Browser — 1,771 nodes from ATL_PNODE_MAP */}
+          <CaisoNodeLocationsBrowser />
         </>
       )}
 

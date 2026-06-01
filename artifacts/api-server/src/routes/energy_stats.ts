@@ -279,4 +279,65 @@ router.get("/ercot-node-locations", async (req, res) => {
   }
 });
 
+// CAISO Node Locations — ATL_PNODE_MAP zone assignments + EIA 860 lat/lon matching
+// Sourced from: CAISO OASIS ATL_PNODE_MAP (public), EIA 860 name match
+router.get("/caiso-node-locations", async (req, res) => {
+  type CaisoLocRow = {
+    node_name: string; node_type: string; caiso_zone: string | null;
+    latitude: number | null; longitude: number | null;
+    location_source: string; eia_plant_name: string | null;
+    avg_da_price: number | null; months_available: number;
+  };
+  try {
+    const { zone, nodeType, limit: limitStr } = req.query as Record<string, string | undefined>;
+    const parsedLimit = Math.min(limitStr ? Number(limitStr) : 2000, 3000);
+
+    let rows: { rows: CaisoLocRow[] };
+
+    if (zone && nodeType) {
+      rows = await db.execute<CaisoLocRow>(sql`
+        SELECT node_name, node_type, caiso_zone, latitude::float, longitude::float,
+               location_source, eia_plant_name, avg_da_price::float, months_available
+        FROM caiso_node_locations
+        WHERE caiso_zone = ${zone} AND node_type = ${nodeType}
+        ORDER BY node_name LIMIT ${parsedLimit}`);
+    } else if (zone) {
+      rows = await db.execute<CaisoLocRow>(sql`
+        SELECT node_name, node_type, caiso_zone, latitude::float, longitude::float,
+               location_source, eia_plant_name, avg_da_price::float, months_available
+        FROM caiso_node_locations
+        WHERE caiso_zone = ${zone}
+        ORDER BY node_name LIMIT ${parsedLimit}`);
+    } else if (nodeType) {
+      rows = await db.execute<CaisoLocRow>(sql`
+        SELECT node_name, node_type, caiso_zone, latitude::float, longitude::float,
+               location_source, eia_plant_name, avg_da_price::float, months_available
+        FROM caiso_node_locations
+        WHERE node_type = ${nodeType}
+        ORDER BY node_name LIMIT ${parsedLimit}`);
+    } else {
+      rows = await db.execute<CaisoLocRow>(sql`
+        SELECT node_name, node_type, caiso_zone, latitude::float, longitude::float,
+               location_source, eia_plant_name, avg_da_price::float, months_available
+        FROM caiso_node_locations
+        ORDER BY node_name LIMIT ${parsedLimit}`);
+    }
+
+    res.json(rows.rows.map(r => ({
+      nodeName: r.node_name,
+      nodeType: r.node_type,
+      caisoZone: r.caiso_zone,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      locationSource: r.location_source,
+      eiaPlantName: r.eia_plant_name,
+      avgDaPrice: r.avg_da_price,
+      monthsAvailable: r.months_available,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "caisoNodeLocations error");
+    res.status(500).json({ error: "internal_error", message: "Failed to list CAISO node locations" });
+  }
+});
+
 export default router;
