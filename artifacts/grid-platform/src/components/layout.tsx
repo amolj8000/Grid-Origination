@@ -15,7 +15,8 @@ import {
   Menu,
   TerminalSquare,
   GitBranch,
-  BookOpen
+  BookOpen,
+  Leaf,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -31,6 +32,7 @@ const sidebarNavItems = [
   { title: "Nodal Analysis", href: "/nodal", icon: Layers },
   { title: "Congestion Analysis", href: "/congestion", icon: GitBranch },
   { title: "Interconnection Queue", href: "/queue", icon: Database },
+  { title: "REC Analysis", href: "/recs", icon: Leaf },
   { title: "Q&A Copilot", href: "/qa", icon: MessageSquare },
   { title: "Export Center", href: "/export", icon: Download },
   { title: "Saved Screenings", href: "/screenings", icon: Bookmark },

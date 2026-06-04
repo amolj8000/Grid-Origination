@@ -13,6 +13,7 @@ import PjmHistorical from "@/pages/pjm";
 import NodalAnalysis from "@/pages/nodal";
 import CongestionAnalysis from "@/pages/congestion";
 import InterconnectionQueue from "@/pages/queue";
+import RECAnalysis from "@/pages/recs";
 import QACopilot from "@/pages/qa";
 import ExportCenter from "@/pages/export";
 import SavedScreenings from "@/pages/screenings";
@@ -34,6 +35,7 @@ function Router() {
         <Route path="/nodal" component={NodalAnalysis} />
         <Route path="/congestion" component={CongestionAnalysis} />
         <Route path="/queue" component={InterconnectionQueue} />
+        <Route path="/recs" component={RECAnalysis} />
         <Route path="/qa" component={QACopilot} />
         <Route path="/export" component={ExportCenter} />
         <Route path="/screenings" component={SavedScreenings} />
