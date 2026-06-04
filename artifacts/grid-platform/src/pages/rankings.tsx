@@ -27,6 +27,48 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+// ─── Investment objectives ────────────────────────────────────────────────────
+const OBJECTIVES = [
+  {
+    id: "risk_adjusted",
+    label: "Risk-Adjusted Value",
+    desc: "Curtailment 25% · Congestion 20% · Basis 20% · Price 15% · Capacity 12% · Age 8%",
+    weights: { curtailmentScore: 0.25, interconnectionScore: 0.20, locationScore: 0.20, priceScore: 0.15, demandProximityScore: 0.12, financialScore: 0.08 },
+  },
+  {
+    id: "lowest_lcoe",
+    label: "Lowest LCOE",
+    desc: "Minimize delivered cost — high energy price score + reliable delivery",
+    weights: { priceScore: 0.35, curtailmentScore: 0.25, interconnectionScore: 0.15, locationScore: 0.10, demandProximityScore: 0.10, financialScore: 0.05 },
+  },
+  {
+    id: "corporate_hedge",
+    label: "Corporate Load Hedge",
+    desc: "Reliability for Walmart load matching — curtailment, congestion, and basis risk first",
+    weights: { curtailmentScore: 0.35, interconnectionScore: 0.25, locationScore: 0.20, demandProximityScore: 0.15, priceScore: 0.05, financialScore: 0.00 },
+  },
+  {
+    id: "decarbonization",
+    label: "Decarbonization",
+    desc: "Maximize clean MWh delivered — scale and reliable output priority",
+    weights: { demandProximityScore: 0.40, curtailmentScore: 0.25, financialScore: 0.15, interconnectionScore: 0.10, locationScore: 0.05, priceScore: 0.05 },
+  },
+  {
+    id: "capacity_value",
+    label: "Capacity Value",
+    desc: "Peak demand support — large, dispatchable, near load",
+    weights: { demandProximityScore: 0.40, curtailmentScore: 0.20, interconnectionScore: 0.15, priceScore: 0.15, locationScore: 0.05, financialScore: 0.05 },
+  },
+  {
+    id: "merchant_upside",
+    label: "Merchant / Developer Upside",
+    desc: "High energy price + price volatility exposure for merchant tail value",
+    weights: { priceScore: 0.40, locationScore: 0.25, interconnectionScore: 0.15, curtailmentScore: 0.10, demandProximityScore: 0.05, financialScore: 0.05 },
+  },
+] as const;
+
+type ObjectiveId = typeof OBJECTIVES[number]["id"];
+
 // ─── Score dimension config ───────────────────────────────────────────────────
 const DIMS = [
   {
@@ -159,8 +201,9 @@ export default function Rankings() {
   const [searchTerm, setSearchTerm] = useState("");
   const [marketFilter, setMarketFilter] = useState<string | undefined>(searchParams.get("market") as any || undefined);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string | undefined>(searchParams.get("assetType") as any || undefined);
-  const [sortField, setSortField] = useState<"overallScore" | "curtailmentScore" | "interconnectionScore" | "locationScore" | "priceScore" | "demandProximityScore" | "annualRecValueUsd">("overallScore");
+  const [sortField, setSortField] = useState<"overallScore" | "objectiveScore" | "curtailmentScore" | "interconnectionScore" | "locationScore" | "priceScore" | "demandProximityScore" | "annualRecValueUsd">("overallScore");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [objective, setObjective] = useState<ObjectiveId>("risk_adjusted");
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newMarket, setNewMarket] = useState("ERCOT");
@@ -181,16 +224,25 @@ export default function Rankings() {
   const createScreening = useCreateScreening();
   const createCandidate = useCreateCandidate();
 
+  const activeObjective = OBJECTIVES.find(o => o.id === objective) ?? OBJECTIVES[0];
+
   const filtered = useMemo(() => {
     if (!candidates) return [];
+    const weights = activeObjective.weights as Record<string, number>;
     return candidates
       .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      .map(c => {
+        const objectiveScore = Math.round(
+          Object.entries(weights).reduce((s, [k, w]) => s + ((c as any)[k] ?? 50) * w, 0)
+        );
+        return { ...c, objectiveScore };
+      })
       .sort((a, b) => {
         const aVal = (a as any)[sortField] ?? 0;
         const bVal = (b as any)[sortField] ?? 0;
         return sortDir === "desc" ? bVal - aVal : aVal - bVal;
       });
-  }, [candidates, searchTerm, sortField, sortDir]);
+  }, [candidates, searchTerm, sortField, sortDir, activeObjective]);
 
   const stats = useMemo(() => {
     if (!filtered.length) return null;
@@ -319,14 +371,40 @@ export default function Rankings() {
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
           <span>
             <span className="font-medium text-foreground">Scoring methodology: </span>
-            Curtailment (25%) · Congestion (20%) · Basis Risk (20%) · Price (15%) · Capacity (12%) · Asset Age (8%).{" "}
-            ERCOT: each plant assigned to its nearest interconnection-queue node (Haversine, ≤200 km, 480 queue projects) → 11 distinct nodes with individual real DA prices ($20.38 HB_PAN → $36.62 LZ_LCRA). CAISO: queue-confirmed NP15/SP15 per plant (2,433 projects, 100% coverage). All real CDR + OASIS data, 28 months. PJM modeled.
+            {activeObjective.desc}.{" "}
+            ERCOT: each plant assigned to its nearest interconnection-queue node (Haversine, ≤200 km) → real DA prices. CAISO: queue-confirmed NP15/SP15 per plant. All real CDR + OASIS data, 28 months. PJM modeled.
           </span>
         </div>
 
         {/* Filters + stats */}
         <div className="flex flex-wrap gap-3 shrink-0 items-center">
-          <div className="relative w-[260px]">
+          {/* Objective dropdown — most prominent */}
+          <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-md px-3 py-1.5">
+            <span className="text-xs font-medium text-primary whitespace-nowrap">Objective</span>
+            <Select
+              value={objective}
+              onValueChange={(v) => {
+                setObjective(v as ObjectiveId);
+                setSortField(v === "risk_adjusted" ? "overallScore" : "objectiveScore");
+                setSortDir("desc");
+              }}
+            >
+              <SelectTrigger className="h-7 w-[220px] border-0 bg-transparent p-0 focus:ring-0 text-sm font-semibold text-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {OBJECTIVES.map(o => (
+                  <SelectItem key={o.id} value={o.id}>
+                    <div>
+                      <div className="font-medium">{o.label}</div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="relative w-[220px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Search plants…" className="pl-8 h-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
@@ -399,7 +477,10 @@ export default function Rankings() {
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">MW</TableHead>
                 <TableHead>
-                  <SortHeader field="overallScore" label="Overall" />
+                  <SortHeader
+                    field={objective === "risk_adjusted" ? "overallScore" : "objectiveScore"}
+                    label={objective === "risk_adjusted" ? "Overall" : activeObjective.label.split(" ").slice(0, 2).join(" ")}
+                  />
                 </TableHead>
                 <TableHead className="w-[180px]">
                   <div className="flex items-center gap-2 text-xs">
@@ -463,17 +544,37 @@ export default function Rankings() {
                         {parseFloat(c.capacityMw as any).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold text-base ${scoreColor(c.overallScore)}`}>
-                            {c.overallScore.toFixed(0)}
-                          </span>
-                          <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${scoreBg(c.overallScore)}`}
-                              style={{ width: `${c.overallScore}%` }}
-                            />
-                          </div>
-                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-2 cursor-default">
+                              {(() => {
+                                const displayScore = objective === "risk_adjusted"
+                                  ? c.overallScore
+                                  : (c as any).objectiveScore ?? c.overallScore;
+                                return (
+                                  <>
+                                    <span className={`font-bold text-base ${scoreColor(displayScore)}`}>
+                                      {Math.round(displayScore)}
+                                    </span>
+                                    <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full ${scoreBg(displayScore)}`}
+                                        style={{ width: `${displayScore}%` }}
+                                      />
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </TooltipTrigger>
+                          {objective !== "risk_adjusted" && (
+                            <TooltipContent side="right" className="text-xs max-w-[220px]">
+                              <p className="font-semibold mb-1">{activeObjective.label}</p>
+                              <p className="text-muted-foreground">{activeObjective.desc}</p>
+                              <p className="text-muted-foreground mt-1">Base score: {c.overallScore.toFixed(0)}</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
                       </TableCell>
                       <TableCell>
                         <ScoreBar c={c as any} />

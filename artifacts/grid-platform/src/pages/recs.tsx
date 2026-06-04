@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
-import { useListCandidates } from "@workspace/api-client-react";
+import { useListCandidates, useListQueueProjects } from "@workspace/api-client-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -14,6 +15,7 @@ import {
 } from "recharts";
 import {
   Loader2, Search, ArrowUpDown, Leaf, Sun, Wind, Droplets, Zap, Info,
+  Building2, ListTree,
 } from "lucide-react";
 
 const ELIGIBLE_TYPES = new Set([
@@ -61,7 +63,7 @@ function fmtM(v: number) {
   return `$${v.toFixed(0)}`;
 }
 function fmtMwh(v: number) {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M MWh`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M MWh`;
   if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}k MWh`;
   return `${v.toFixed(0)} MWh`;
 }
@@ -74,26 +76,44 @@ const TOOLTIP_STYLE = {
 };
 
 type SortField = "annualRecValueUsd" | "annualRecMwh" | "recPricePerMwh" | "lifetimeRecValue20yr" | "capacityMw";
+type DataSource = "operational" | "queue";
 
 export default function RECAnalysis() {
-  const [search, setSearch]         = useState("");
-  const [marketFilter, setMarket]   = useState<string | undefined>(undefined);
-  const [typeFilter, setType]       = useState<string | undefined>(undefined);
-  const [sortField, setSortField]   = useState<SortField>("annualRecValueUsd");
-  const [sortDir, setSortDir]       = useState<"desc" | "asc">("desc");
+  const [dataSource, setDataSource]  = useState<DataSource>("operational");
+  const [search, setSearch]          = useState("");
+  const [marketFilter, setMarket]    = useState<string | undefined>(undefined);
+  const [typeFilter, setType]        = useState<string | undefined>(undefined);
+  const [sortField, setSortField]    = useState<SortField>("annualRecValueUsd");
+  const [sortDir, setSortDir]        = useState<"desc" | "asc">("desc");
 
-  const { data: all, isLoading } = useListCandidates({});
+  const { data: candidateData, isLoading: loadingCandidates } = useListCandidates({});
+  const { data: queueData, isLoading: loadingQueue } = useListQueueProjects({ limit: 3000 } as any);
+
+  const isLoading = dataSource === "operational" ? loadingCandidates : loadingQueue;
 
   const eligible = useMemo(() => {
-    if (!all) return [];
-    return (all as any[]).filter(c => c.recEligible === true);
-  }, [all]);
+    if (dataSource === "operational") {
+      return (candidateData as any[] ?? []).filter(c => c.recEligible === true);
+    } else {
+      return (queueData as any[] ?? [])
+        .filter(q => q.recEligible === true)
+        .map(q => ({
+          ...q,
+          name:      q.projectName,
+          assetType: q.fuelType,
+          commissioningYear: q.requestDate ? new Date(q.requestDate).getFullYear() : null,
+        }));
+    }
+  }, [dataSource, candidateData, queueData]);
 
   const filtered = useMemo(() => {
     let rows = eligible;
     if (marketFilter) rows = rows.filter(c => c.market === marketFilter);
     if (typeFilter)   rows = rows.filter(c => c.assetType === typeFilter);
-    if (search)       rows = rows.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || (c.state ?? "").toLowerCase().includes(search.toLowerCase()));
+    if (search)       rows = rows.filter(c =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.state ?? "").toLowerCase().includes(search.toLowerCase())
+    );
     return [...rows].sort((a, b) => {
       const av = (a as any)[sortField] ?? 0;
       const bv = (b as any)[sortField] ?? 0;
@@ -101,17 +121,64 @@ export default function RECAnalysis() {
     });
   }, [eligible, marketFilter, typeFilter, search, sortField, sortDir]);
 
+  // ── KPI stats ────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     if (!eligible.length) return null;
-    const totalAnnualMwh   = eligible.reduce((s, c) => s + ((c as any).annualRecMwh  ?? 0), 0);
+    const totalAnnualMwh   = eligible.reduce((s, c) => s + ((c as any).annualRecMwh ?? 0), 0);
     const totalAnnualValue = eligible.reduce((s, c) => s + ((c as any).annualRecValueUsd ?? 0), 0);
     const total20yr        = eligible.reduce((s, c) => s + ((c as any).lifetimeRecValue20yr ?? 0), 0);
     const avgPrice = totalAnnualMwh > 0
-      ? (eligible.reduce((s, c) => s + ((c as any).recPricePerMwh ?? 0) * ((c as any).annualRecMwh ?? 0), 0) / totalAnnualMwh)
+      ? eligible.reduce((s, c) => s + ((c as any).recPricePerMwh ?? 0) * ((c as any).annualRecMwh ?? 0), 0) / totalAnnualMwh
       : 0;
     return { totalAnnualMwh, totalAnnualValue, total20yr, avgPrice, count: eligible.length };
   }, [eligible]);
 
+  // ── Year × Technology stacked bar ────────────────────────────────────────────
+  const yearTechData = useMemo(() => {
+    const yearMap: Record<number, Record<string, number>> = {};
+    const techSet = new Set<string>();
+
+    eligible.forEach(r => {
+      const yr: number | null = (r as any).commissioningYear ?? null;
+      if (!yr || yr < 1985 || yr > 2030) return;
+      const tech = (r as any).assetType ?? "other";
+      techSet.add(tech);
+      if (!yearMap[yr]) yearMap[yr] = {};
+      yearMap[yr][tech] = (yearMap[yr][tech] ?? 0) + ((r as any).annualRecValueUsd ?? 0);
+    });
+
+    const rows = Object.entries(yearMap)
+      .map(([yr, d]) => {
+        const row: Record<string, number> = { year: parseInt(yr) };
+        techSet.forEach(t => { row[t] = Math.round((d[t] ?? 0) / 1_000_000 * 10) / 10; });
+        return row;
+      })
+      .sort((a, b) => a.year - b.year);
+
+    const techs = [...techSet].sort((a, b) => {
+      const aTotal = rows.reduce((s, r) => s + (r[a] ?? 0), 0);
+      const bTotal = rows.reduce((s, r) => s + (r[b] ?? 0), 0);
+      return bTotal - aTotal;
+    });
+
+    return { rows, techs };
+  }, [eligible]);
+
+  // ── By-type pie ──────────────────────────────────────────────────────────────
+  const typeData = useMemo(() => {
+    const t: Record<string, { annualValue: number; count: number }> = {};
+    eligible.forEach(c => {
+      const tp = (c as any).assetType;
+      if (!t[tp]) t[tp] = { annualValue: 0, count: 0 };
+      t[tp].annualValue += (c as any).annualRecValueUsd ?? 0;
+      t[tp].count++;
+    });
+    return Object.entries(t)
+      .map(([type, d]) => ({ type, ...d, fill: TYPE_COLORS[type] ?? "#94a3b8" }))
+      .sort((a, b) => b.annualValue - a.annualValue);
+  }, [eligible]);
+
+  // ── Market summary ───────────────────────────────────────────────────────────
   const marketData = useMemo(() => {
     const m: Record<string, { annualValue: number; annualMwh: number; count: number }> = {};
     eligible.forEach(c => {
@@ -121,62 +188,63 @@ export default function RECAnalysis() {
       m[mkt].annualMwh   += (c as any).annualRecMwh    ?? 0;
       m[mkt].count++;
     });
-    return Object.entries(m).map(([market, d]) => ({ market, ...d }))
+    return Object.entries(m)
+      .map(([market, d]) => ({ market, ...d }))
       .sort((a, b) => b.annualValue - a.annualValue);
   }, [eligible]);
-
-  const typeData = useMemo(() => {
-    const t: Record<string, { annualValue: number; count: number }> = {};
-    eligible.forEach(c => {
-      const tp = c.assetType;
-      if (!t[tp]) t[tp] = { annualValue: 0, count: 0 };
-      t[tp].annualValue += (c as any).annualRecValueUsd ?? 0;
-      t[tp].count++;
-    });
-    return Object.entries(t).map(([type, d]) => ({ type, ...d, fill: TYPE_COLORS[type] ?? "#94a3b8" }))
-      .sort((a, b) => b.annualValue - a.annualValue);
-  }, [eligible]);
-
-  const top20 = useMemo(() =>
-    [...eligible]
-      .sort((a, b) => ((b as any).annualRecValueUsd ?? 0) - ((a as any).annualRecValueUsd ?? 0))
-      .slice(0, 20)
-      .map(c => ({
-        name: c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name,
-        value: Math.round(((c as any).annualRecValueUsd ?? 0) / 1_000),
-        fill: MARKET_COLORS[c.market] ?? "#94a3b8",
-      })),
-    [eligible]
-  );
 
   const handleSort = (f: SortField) => {
     if (sortField === f) setSortDir(d => d === "desc" ? "asc" : "desc");
     else { setSortField(f); setSortDir("desc"); }
   };
 
-  const SortHead = ({ field, label, right }: { field: SortField; label: string; right?: boolean }) => (
+  const SortHead = ({ field, label }: { field: SortField; label: string }) => (
     <button
-      className={`flex items-center gap-1 hover:text-primary transition-colors ${sortField === field ? "text-primary" : ""} ${right ? "ml-auto" : ""}`}
+      className={`flex items-center gap-1 hover:text-primary transition-colors ml-auto ${sortField === field ? "text-primary" : ""}`}
       onClick={() => handleSort(field)}
     >
-      {label}
-      <ArrowUpDown className="h-3 w-3" />
+      {label}<ArrowUpDown className="h-3 w-3" />
     </button>
   );
 
+  const yearLabel = dataSource === "operational" ? "Commissioning Year" : "Queue Entry Year";
+
   return (
     <TooltipProvider>
-      <div className="p-6 h-full flex flex-col space-y-5">
+      <div className="p-6 h-full flex flex-col space-y-4">
 
-        {/* Header */}
-        <div className="shrink-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <Leaf className="h-5 w-5 text-emerald-400" />
-            <h1 className="text-2xl font-bold tracking-tight">REC Analysis</h1>
+        {/* Header + data source toggle */}
+        <div className="shrink-0 flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <Leaf className="h-5 w-5 text-emerald-400" />
+              <h1 className="text-2xl font-bold tracking-tight">REC Analysis</h1>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              Renewable Energy Credit valuation — solar, wind, hydro, geothermal, biomass only. Storage, gas, and nuclear excluded.
+            </p>
           </div>
-          <p className="text-muted-foreground text-sm">
-            Renewable Energy Credit valuation across EIA 860 eligible generators — solar, wind, hydro, geothermal, and biomass only.
-          </p>
+          {/* Data source tabs */}
+          <div className="flex rounded-md border border-border overflow-hidden shrink-0 self-start">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none gap-2 px-4 border-r border-border ${dataSource === "operational" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => { setDataSource("operational"); setType(undefined); }}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Operational Generators
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none gap-2 px-4 ${dataSource === "queue" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => { setDataSource("queue"); setType(undefined); }}
+            >
+              <ListTree className="h-3.5 w-3.5" />
+              Interconnection Queue
+            </Button>
+          </div>
         </div>
 
         {/* Info banner */}
@@ -184,7 +252,10 @@ export default function RECAnalysis() {
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
           <span>
             <span className="font-medium text-foreground">Methodology: </span>
-            Annual RECs (MWh) = capacity × capacity factor × 8,760 h. Benchmark prices: ERCOT Texas TRC ~$1.50/MWh (large, liquid market) · CAISO WREGIS RPS solar $12, wind $10, hydro $7, geo $10 · PJM solar SREC $15, wind $3.50, offshore OREC $120, hydro $2. Storage, gas, and nuclear generate no RECs.
+            Annual RECs (MWh) = capacity × capacity factor × 8,760 h. Prices: ERCOT TRC ~$1.50/MWh · CAISO WREGIS solar $12, wind $10, hydro $7, geo $10 · PJM solar SREC $15, wind $3.50, offshore OREC $120.
+            {dataSource === "operational"
+              ? " Operational = EIA 860 2024 operable plants. Year = commissioning date (COD)."
+              : " Queue = interconnection applications across ERCOT/CAISO/PJM. Year = queue entry date."}
           </span>
         </div>
 
@@ -203,7 +274,9 @@ export default function RECAnalysis() {
                   </CardHeader>
                   <CardContent className="pb-4 px-4">
                     <div className="text-2xl font-bold text-emerald-400">{stats.count.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">of 3,875 EIA 860</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {dataSource === "operational" ? "of 3,875 EIA 860" : "of ~3,493 in queue"}
+                    </div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -238,45 +311,59 @@ export default function RECAnalysis() {
 
             {/* Charts row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 shrink-0">
-              {/* Top 20 bar chart */}
+              {/* Year × Technology stacked bar */}
               <Card className="lg:col-span-2">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Top 20 Plants by Annual REC Value</CardTitle>
+                  <CardTitle className="text-sm">Annual REC Value by {yearLabel} & Technology ($M/yr)</CardTitle>
                   <CardDescription className="text-xs">
-                    Color = market: <span style={{ color: MARKET_COLORS.ERCOT }}>ERCOT</span> · <span style={{ color: MARKET_COLORS.CAISO }}>CAISO</span> · <span style={{ color: MARKET_COLORS.PJM }}>PJM</span>
+                    Stacked by technology — shows which vintage and resource type drives REC portfolio
                   </CardDescription>
                 </CardHeader>
-                <CardContent style={{ height: 240 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={top20} layout="vertical" margin={{ top: 0, right: 20, left: 130, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e2d3e" horizontal={false} />
-                      <XAxis type="number" stroke="#64748b" tick={{ fill: "#64748b", fontSize: 10 }} tickFormatter={v => `$${v}k`} />
-                      <YAxis dataKey="name" type="category" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 10 }} width={128} />
-                      <RechartsTooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [`$${v.toLocaleString()}k/yr`]} />
-                      <Bar isAnimationActive={false} dataKey="value" name="Annual REC" radius={[0, 4, 4, 0]}>
-                        {top20.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                <CardContent style={{ height: 220 }}>
+                  {yearTechData.rows.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={yearTechData.rows} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e2d3e" vertical={false} />
+                        <XAxis dataKey="year" stroke="#64748b" tick={{ fill: "#64748b", fontSize: 10 }} />
+                        <YAxis stroke="#64748b" tick={{ fill: "#64748b", fontSize: 10 }} tickFormatter={v => `$${v}M`} width={48} />
+                        <RechartsTooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(v: number, name: string) => [`$${v.toFixed(1)}M/yr`, name]}
+                        />
+                        {yearTechData.techs.map(tech => (
+                          <Bar
+                            key={tech}
+                            dataKey={tech}
+                            stackId="a"
+                            fill={TYPE_COLORS[tech] ?? "#94a3b8"}
+                            name={tech.replace(/_/g, " ")}
+                            isAnimationActive={false}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground text-sm">No year data available</div>
+                  )}
                 </CardContent>
               </Card>
 
               {/* By type pie */}
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Annual Value by Type</CardTitle>
+                  <CardTitle className="text-sm">Annual Value by Technology</CardTitle>
                   <CardDescription className="text-xs">Share of total REC revenue</CardDescription>
                 </CardHeader>
-                <CardContent style={{ height: 240 }}>
+                <CardContent style={{ height: 220 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         isAnimationActive={false}
                         data={typeData}
-                        cx="40%"
+                        cx="38%"
                         cy="50%"
-                        innerRadius={48}
-                        outerRadius={80}
+                        innerRadius={44}
+                        outerRadius={76}
                         paddingAngle={2}
                         dataKey="annualValue"
                         nameKey="type"
@@ -285,10 +372,8 @@ export default function RECAnalysis() {
                       </Pie>
                       <RechartsTooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [fmtM(v)]} />
                       <Legend
-                        layout="vertical"
-                        align="right"
-                        verticalAlign="middle"
-                        formatter={(v) => <span style={{ color: "#f8fafc", fontSize: 11 }}>{v}</span>}
+                        layout="vertical" align="right" verticalAlign="middle"
+                        formatter={(v) => <span style={{ color: "#f8fafc", fontSize: 11 }}>{v.replace(/_/g, " ")}</span>}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -296,7 +381,7 @@ export default function RECAnalysis() {
               </Card>
             </div>
 
-            {/* Market summary cards */}
+            {/* Market summary */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 shrink-0">
               {marketData.map(m => (
                 <div key={m.market} className="bg-card border border-border rounded-md px-4 py-3 flex items-center justify-between">
@@ -342,10 +427,11 @@ export default function RECAnalysis() {
                   <SelectItem value="biomass">Biomass</SelectItem>
                   <SelectItem value="solar_storage">Solar + Storage</SelectItem>
                   <SelectItem value="wind_storage">Wind + Storage</SelectItem>
+                  {dataSource === "queue" && <SelectItem value="hybrid">Hybrid</SelectItem>}
                 </SelectContent>
               </Select>
               <div className="ml-auto text-xs text-muted-foreground self-center">
-                {filtered.length.toLocaleString()} eligible plants
+                {filtered.length.toLocaleString()} eligible {dataSource === "operational" ? "plants" : "projects"}
               </div>
             </div>
 
@@ -355,23 +441,25 @@ export default function RECAnalysis() {
                 <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
                   <TableRow>
                     <TableHead className="w-8 text-xs">#</TableHead>
-                    <TableHead className="w-[220px]">Plant</TableHead>
+                    <TableHead className="w-[220px]">
+                      {dataSource === "operational" ? "Plant" : "Project"}
+                    </TableHead>
                     <TableHead>Market</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead className="text-right">
-                      <SortHead field="capacityMw" label="MW" right />
+                      <SortHead field="capacityMw" label="MW" />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortHead field="annualRecMwh" label="RECs/yr" right />
+                      <SortHead field="annualRecMwh" label="RECs/yr" />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortHead field="recPricePerMwh" label="$/MWh" right />
+                      <SortHead field="recPricePerMwh" label="$/MWh" />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortHead field="annualRecValueUsd" label="Annual Value" right />
+                      <SortHead field="annualRecValueUsd" label="Annual Value" />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortHead field="lifetimeRecValue20yr" label="20yr Value" right />
+                      <SortHead field="lifetimeRecValue20yr" label="20yr Value" />
                     </TableHead>
                     <TableHead>REC Market</TableHead>
                     <TableHead className="text-xs text-muted-foreground">State</TableHead>
@@ -381,29 +469,30 @@ export default function RECAnalysis() {
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
-                        No eligible plants match the current filters.
+                        No eligible {dataSource === "operational" ? "plants" : "projects"} match the current filters.
                       </TableCell>
                     </TableRow>
                   ) : (
                     filtered.map((c, idx) => {
-                      const recMwh  = (c as any).annualRecMwh       ?? 0;
-                      const recVal  = (c as any).annualRecValueUsd   ?? 0;
-                      const rec20   = (c as any).lifetimeRecValue20yr ?? 0;
-                      const price   = (c as any).recPricePerMwh      ?? 0;
-                      const label   = (c as any).recMarketLabel       ?? "";
+                      const recMwh  = (c as any).annualRecMwh        ?? 0;
+                      const recVal  = (c as any).annualRecValueUsd    ?? 0;
+                      const rec20   = (c as any).lifetimeRecValue20yr  ?? 0;
+                      const price   = (c as any).recPricePerMwh        ?? 0;
+                      const label   = (c as any).recMarketLabel         ?? "";
+                      const name    = (c as any).name ?? (c as any).projectName ?? "—";
                       return (
-                        <TableRow key={c.id} className="hover:bg-muted/30 text-sm">
+                        <TableRow key={`${c.id}-${idx}`} className="hover:bg-muted/30 text-sm">
                           <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
                           <TableCell>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="font-medium truncate block max-w-[200px] cursor-default">
-                                  {c.name}
-                                </span>
+                                <span className="font-medium truncate block max-w-[200px] cursor-default">{name}</span>
                               </TooltipTrigger>
                               <TooltipContent side="right" className="text-xs max-w-[220px]">
-                                <p className="font-semibold mb-1">{c.name}</p>
-                                {c.notes && <p className="text-muted-foreground">{c.notes.replace("Source: EIA 860 2024 | ", "")}</p>}
+                                <p className="font-semibold mb-1">{name}</p>
+                                {(c as any).notes && (
+                                  <p className="text-muted-foreground">{(c as any).notes.replace("Source: EIA 860 2024 | ", "")}</p>
+                                )}
                               </TooltipContent>
                             </Tooltip>
                           </TableCell>
@@ -414,25 +503,19 @@ export default function RECAnalysis() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1.5">
-                              <TypeIcon type={c.assetType} />
-                              <span className="text-xs capitalize">{c.assetType.replace(/_/g, " ")}</span>
+                              <TypeIcon type={(c as any).assetType} />
+                              <span className="text-xs capitalize">{((c as any).assetType ?? "").replace(/_/g, " ")}</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-right text-xs font-medium">
                             {parseFloat(c.capacityMw as any).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </TableCell>
-                          <TableCell className="text-right text-xs">
-                            {recMwh.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right text-xs font-medium">
-                            ${price.toFixed(2)}
-                          </TableCell>
+                          <TableCell className="text-right text-xs">{recMwh.toLocaleString()}</TableCell>
+                          <TableCell className="text-right text-xs font-medium">${price.toFixed(2)}</TableCell>
                           <TableCell className="text-right">
                             <span className="text-emerald-400 font-semibold text-sm">{fmtM(recVal)}/yr</span>
                           </TableCell>
-                          <TableCell className="text-right text-xs text-muted-foreground">
-                            {fmtM(rec20)}
-                          </TableCell>
+                          <TableCell className="text-right text-xs text-muted-foreground">{fmtM(rec20)}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{label}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{c.state ?? "—"}</TableCell>
                         </TableRow>
