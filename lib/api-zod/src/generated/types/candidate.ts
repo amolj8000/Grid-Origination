@@ -36,6 +36,18 @@ export interface Candidate {
   demandProximityScore?: number;
   developmentRiskScore?: number;
   notes?: string;
+  /** Whether this asset type earns RECs (solar, wind, hydro, geothermal, biomass = eligible; storage, gas, nuclear = not) */
+  recEligible?: boolean;
+  /** Estimated annual REC generation in MWh (capacity × capacity_factor × 8760) */
+  annualRecMwh?: number;
+  /** Market benchmark REC price in $/MWh (ERCOT TRC ~$1.50, CAISO WREGIS ~$7-12, PJM $2-120) */
+  recPricePerMwh?: number;
+  /** Estimated annual REC revenue in USD */
+  annualRecValueUsd?: number;
+  /** 20-year undiscounted REC value in USD */
+  lifetimeRecValue20yr?: number;
+  /** Human-readable label for the REC market (e.g. Texas TRC, CA WREGIS RPS) */
+  recMarketLabel?: string;
   createdAt: Date;
   updatedAt: Date;
 }

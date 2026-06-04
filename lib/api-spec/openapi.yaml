@@ -541,7 +541,7 @@ components:
           enum: [ERCOT, CAISO, PJM]
         assetType:
           type: string
-          enum: [solar, wind, storage, solar_storage, wind_storage]
+          enum: [solar, wind, storage, solar_storage, wind_storage, hydro, biomass, geothermal, natural_gas, nuclear]
         status:
           type: string
           enum: [active, inactive, under_review, contracted]
@@ -587,6 +587,24 @@ components:
           type: number
         notes:
           type: string
+        recEligible:
+          type: boolean
+          description: Whether this asset type earns RECs (solar, wind, hydro, geothermal, biomass = eligible; storage, gas, nuclear = not)
+        annualRecMwh:
+          type: number
+          description: Estimated annual REC generation in MWh (capacity × capacity_factor × 8760)
+        recPricePerMwh:
+          type: number
+          description: Market benchmark REC price in $/MWh (ERCOT TRC ~$1.50, CAISO WREGIS ~$7-12, PJM $2-120)
+        annualRecValueUsd:
+          type: number
+          description: Estimated annual REC revenue in USD
+        lifetimeRecValue20yr:
+          type: number
+          description: 20-year undiscounted REC value in USD
+        recMarketLabel:
+          type: string
+          description: Human-readable label for the REC market (e.g. Texas TRC, CA WREGIS RPS)
         createdAt:
           type: string
           format: date-time
@@ -864,6 +882,24 @@ components:
         withdrawalDate:
           type: string
           format: date-time
+        recEligible:
+          type: boolean
+          description: Whether this fuel type earns RECs
+        annualRecMwh:
+          type: number
+          description: Estimated annual REC generation in MWh
+        recPricePerMwh:
+          type: number
+          description: Market benchmark REC price in $/MWh
+        annualRecValueUsd:
+          type: number
+          description: Estimated annual REC revenue in USD
+        lifetimeRecValue20yr:
+          type: number
+          description: 20-year undiscounted REC value in USD
+        recMarketLabel:
+          type: string
+          description: Human-readable label for the REC market
       required: [id, projectName, market, fuelType, capacityMw, status]
 
     DashboardSummary:

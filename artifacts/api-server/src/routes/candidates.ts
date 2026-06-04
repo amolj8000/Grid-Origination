@@ -9,6 +9,7 @@ import {
   UpdateCandidateParams,
   DeleteCandidateParams,
 } from "@workspace/api-zod";
+import { computeRec } from "../lib/rec";
 
 const router = Router();
 
@@ -52,25 +53,30 @@ router.get("/candidates", async (req, res) => {
       .limit(limit)
       .offset(offset);
 
-    const result = rows.map(r => ({
-      ...r,
-      capacityMw: Number(r.capacityMw),
-      latitude: Number(r.latitude),
-      longitude: Number(r.longitude),
-      overallScore: Number(r.overallScore),
-      estimatedLcoe: r.estimatedLcoe ? Number(r.estimatedLcoe) : null,
-      offtakePriceMwh: r.offtakePriceMwh ? Number(r.offtakePriceMwh) : null,
-      priceScore: r.priceScore ? Number(r.priceScore) : null,
-      locationScore: r.locationScore ? Number(r.locationScore) : null,
-      curtailmentScore: r.curtailmentScore ? Number(r.curtailmentScore) : null,
-      interconnectionScore: r.interconnectionScore ? Number(r.interconnectionScore) : null,
-      regulatoryScore: r.regulatoryScore ? Number(r.regulatoryScore) : null,
-      financialScore: r.financialScore ? Number(r.financialScore) : null,
-      environmentalScore: r.environmentalScore ? Number(r.environmentalScore) : null,
-      gridStabilityScore: r.gridStabilityScore ? Number(r.gridStabilityScore) : null,
-      demandProximityScore: r.demandProximityScore ? Number(r.demandProximityScore) : null,
-      developmentRiskScore: r.developmentRiskScore ? Number(r.developmentRiskScore) : null,
-    }));
+    const result = rows.map(r => {
+      const capacityMw = Number(r.capacityMw);
+      const rec = computeRec(r.assetType, r.market, capacityMw);
+      return {
+        ...r,
+        capacityMw,
+        latitude: Number(r.latitude),
+        longitude: Number(r.longitude),
+        overallScore: Number(r.overallScore),
+        estimatedLcoe: r.estimatedLcoe ? Number(r.estimatedLcoe) : null,
+        offtakePriceMwh: r.offtakePriceMwh ? Number(r.offtakePriceMwh) : null,
+        priceScore: r.priceScore ? Number(r.priceScore) : null,
+        locationScore: r.locationScore ? Number(r.locationScore) : null,
+        curtailmentScore: r.curtailmentScore ? Number(r.curtailmentScore) : null,
+        interconnectionScore: r.interconnectionScore ? Number(r.interconnectionScore) : null,
+        regulatoryScore: r.regulatoryScore ? Number(r.regulatoryScore) : null,
+        financialScore: r.financialScore ? Number(r.financialScore) : null,
+        environmentalScore: r.environmentalScore ? Number(r.environmentalScore) : null,
+        gridStabilityScore: r.gridStabilityScore ? Number(r.gridStabilityScore) : null,
+        demandProximityScore: r.demandProximityScore ? Number(r.demandProximityScore) : null,
+        developmentRiskScore: r.developmentRiskScore ? Number(r.developmentRiskScore) : null,
+        ...rec,
+      };
+    });
 
     res.json(result);
   } catch (err) {

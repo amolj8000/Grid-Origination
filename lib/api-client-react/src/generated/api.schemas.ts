@@ -32,6 +32,11 @@ export const CandidateAssetType = {
   storage: "storage",
   solar_storage: "solar_storage",
   wind_storage: "wind_storage",
+  hydro: "hydro",
+  biomass: "biomass",
+  geothermal: "geothermal",
+  natural_gas: "natural_gas",
+  nuclear: "nuclear",
 } as const;
 
 export type CandidateStatus =
@@ -71,6 +76,18 @@ export interface Candidate {
   demandProximityScore?: number;
   developmentRiskScore?: number;
   notes?: string;
+  /** Whether this asset type earns RECs (solar, wind, hydro, geothermal, biomass = eligible; storage, gas, nuclear = not) */
+  recEligible?: boolean;
+  /** Estimated annual REC generation in MWh (capacity × capacity_factor × 8760) */
+  annualRecMwh?: number;
+  /** Market benchmark REC price in $/MWh (ERCOT TRC ~$1.50, CAISO WREGIS ~$7-12, PJM $2-120) */
+  recPricePerMwh?: number;
+  /** Estimated annual REC revenue in USD */
+  annualRecValueUsd?: number;
+  /** 20-year undiscounted REC value in USD */
+  lifetimeRecValue20yr?: number;
+  /** Human-readable label for the REC market (e.g. Texas TRC, CA WREGIS RPS) */
+  recMarketLabel?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -162,6 +179,7 @@ export type ErcotNodeStatsNodeType =
 export const ErcotNodeStatsNodeType = {
   hub: "hub",
   load_zone: "load_zone",
+  resource_node: "resource_node",
 } as const;
 
 export interface ErcotNodeStats {
@@ -270,6 +288,18 @@ export interface QueueProject {
   requestDate?: string;
   studyGroupPhase?: string;
   withdrawalDate?: string;
+  /** Whether this fuel type earns RECs */
+  recEligible?: boolean;
+  /** Estimated annual REC generation in MWh */
+  annualRecMwh?: number;
+  /** Market benchmark REC price in $/MWh */
+  recPricePerMwh?: number;
+  /** Estimated annual REC revenue in USD */
+  annualRecValueUsd?: number;
+  /** 20-year undiscounted REC value in USD */
+  lifetimeRecValue20yr?: number;
+  /** Human-readable label for the REC market */
+  recMarketLabel?: string;
 }
 
 export type DashboardSummaryCandidatesByMarket = { [key: string]: number };
@@ -360,12 +390,31 @@ export const ListCandidatesStatus = {
 
 export type ListErcotNodeStatsParams = {
   node?: string;
-  nodeType?: "hub" | "load_zone" | "resource_node";
+  nodeType?: ListErcotNodeStatsNodeType;
   year?: number;
   month?: number;
-  sortBy?: "neg_price_percent" | "volatility" | "avg_rt_price" | "price_range";
+  sortBy?: ListErcotNodeStatsSortBy;
   limit?: number;
 };
+
+export type ListErcotNodeStatsNodeType =
+  (typeof ListErcotNodeStatsNodeType)[keyof typeof ListErcotNodeStatsNodeType];
+
+export const ListErcotNodeStatsNodeType = {
+  hub: "hub",
+  load_zone: "load_zone",
+  resource_node: "resource_node",
+} as const;
+
+export type ListErcotNodeStatsSortBy =
+  (typeof ListErcotNodeStatsSortBy)[keyof typeof ListErcotNodeStatsSortBy];
+
+export const ListErcotNodeStatsSortBy = {
+  neg_price_percent: "neg_price_percent",
+  volatility: "volatility",
+  avg_rt_price: "avg_rt_price",
+  price_range: "price_range",
+} as const;
 
 export type ListErcotSettlementPointsParams = {
   year?: number;

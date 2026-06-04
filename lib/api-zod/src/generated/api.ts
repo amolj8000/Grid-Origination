@@ -44,6 +44,11 @@ export const ListCandidatesResponseItem = zod.object({
     "storage",
     "solar_storage",
     "wind_storage",
+    "hydro",
+    "biomass",
+    "geothermal",
+    "natural_gas",
+    "nuclear",
   ]),
   status: zod.enum(["active", "inactive", "under_review", "contracted"]),
   capacityMw: zod.number(),
@@ -67,6 +72,38 @@ export const ListCandidatesResponseItem = zod.object({
   demandProximityScore: zod.number().optional(),
   developmentRiskScore: zod.number().optional(),
   notes: zod.string().optional(),
+  recEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this asset type earns RECs (solar, wind, hydro, geothermal, biomass = eligible; storage, gas, nuclear = not)",
+    ),
+  annualRecMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Estimated annual REC generation in MWh (capacity × capacity_factor × 8760)",
+    ),
+  recPricePerMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Market benchmark REC price in $\/MWh (ERCOT TRC ~$1.50, CAISO WREGIS ~$7-12, PJM $2-120)",
+    ),
+  annualRecValueUsd: zod
+    .number()
+    .optional()
+    .describe("Estimated annual REC revenue in USD"),
+  lifetimeRecValue20yr: zod
+    .number()
+    .optional()
+    .describe("20-year undiscounted REC value in USD"),
+  recMarketLabel: zod
+    .string()
+    .optional()
+    .describe(
+      "Human-readable label for the REC market (e.g. Texas TRC, CA WREGIS RPS)",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -127,6 +164,11 @@ export const GetCandidateResponse = zod.object({
     "storage",
     "solar_storage",
     "wind_storage",
+    "hydro",
+    "biomass",
+    "geothermal",
+    "natural_gas",
+    "nuclear",
   ]),
   status: zod.enum(["active", "inactive", "under_review", "contracted"]),
   capacityMw: zod.number(),
@@ -150,6 +192,38 @@ export const GetCandidateResponse = zod.object({
   demandProximityScore: zod.number().optional(),
   developmentRiskScore: zod.number().optional(),
   notes: zod.string().optional(),
+  recEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this asset type earns RECs (solar, wind, hydro, geothermal, biomass = eligible; storage, gas, nuclear = not)",
+    ),
+  annualRecMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Estimated annual REC generation in MWh (capacity × capacity_factor × 8760)",
+    ),
+  recPricePerMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Market benchmark REC price in $\/MWh (ERCOT TRC ~$1.50, CAISO WREGIS ~$7-12, PJM $2-120)",
+    ),
+  annualRecValueUsd: zod
+    .number()
+    .optional()
+    .describe("Estimated annual REC revenue in USD"),
+  lifetimeRecValue20yr: zod
+    .number()
+    .optional()
+    .describe("20-year undiscounted REC value in USD"),
+  recMarketLabel: zod
+    .string()
+    .optional()
+    .describe(
+      "Human-readable label for the REC market (e.g. Texas TRC, CA WREGIS RPS)",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -206,6 +280,11 @@ export const UpdateCandidateResponse = zod.object({
     "storage",
     "solar_storage",
     "wind_storage",
+    "hydro",
+    "biomass",
+    "geothermal",
+    "natural_gas",
+    "nuclear",
   ]),
   status: zod.enum(["active", "inactive", "under_review", "contracted"]),
   capacityMw: zod.number(),
@@ -229,6 +308,38 @@ export const UpdateCandidateResponse = zod.object({
   demandProximityScore: zod.number().optional(),
   developmentRiskScore: zod.number().optional(),
   notes: zod.string().optional(),
+  recEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this asset type earns RECs (solar, wind, hydro, geothermal, biomass = eligible; storage, gas, nuclear = not)",
+    ),
+  annualRecMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Estimated annual REC generation in MWh (capacity × capacity_factor × 8760)",
+    ),
+  recPricePerMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Market benchmark REC price in $\/MWh (ERCOT TRC ~$1.50, CAISO WREGIS ~$7-12, PJM $2-120)",
+    ),
+  annualRecValueUsd: zod
+    .number()
+    .optional()
+    .describe("Estimated annual REC revenue in USD"),
+  lifetimeRecValue20yr: zod
+    .number()
+    .optional()
+    .describe("20-year undiscounted REC value in USD"),
+  recMarketLabel: zod
+    .string()
+    .optional()
+    .describe(
+      "Human-readable label for the REC market (e.g. Texas TRC, CA WREGIS RPS)",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -293,14 +404,16 @@ export const DeleteScreeningParams = zod.object({
 });
 
 /**
- * @summary List ERCOT hub/zone monthly stats
+ * @summary List ERCOT hub/zone/resource-node monthly stats
  */
 export const ListErcotNodeStatsQueryParams = zod.object({
   node: zod.coerce.string().optional(),
   nodeType: zod.enum(["hub", "load_zone", "resource_node"]).optional(),
   year: zod.coerce.number().optional(),
   month: zod.coerce.number().optional(),
-  sortBy: zod.enum(["neg_price_percent", "volatility", "avg_rt_price", "price_range"]).optional(),
+  sortBy: zod
+    .enum(["neg_price_percent", "volatility", "avg_rt_price", "price_range"])
+    .optional(),
   limit: zod.coerce.number().optional(),
 });
 
@@ -464,6 +577,30 @@ export const ListQueueProjectsResponseItem = zod.object({
   requestDate: zod.coerce.date().optional(),
   studyGroupPhase: zod.string().optional(),
   withdrawalDate: zod.coerce.date().optional(),
+  recEligible: zod
+    .boolean()
+    .optional()
+    .describe("Whether this fuel type earns RECs"),
+  annualRecMwh: zod
+    .number()
+    .optional()
+    .describe("Estimated annual REC generation in MWh"),
+  recPricePerMwh: zod
+    .number()
+    .optional()
+    .describe("Market benchmark REC price in $\/MWh"),
+  annualRecValueUsd: zod
+    .number()
+    .optional()
+    .describe("Estimated annual REC revenue in USD"),
+  lifetimeRecValue20yr: zod
+    .number()
+    .optional()
+    .describe("20-year undiscounted REC value in USD"),
+  recMarketLabel: zod
+    .string()
+    .optional()
+    .describe("Human-readable label for the REC market"),
 });
 export const ListQueueProjectsResponse = zod.array(
   ListQueueProjectsResponseItem,
@@ -525,6 +662,11 @@ export const GetTopCandidatesResponseItem = zod.object({
     "storage",
     "solar_storage",
     "wind_storage",
+    "hydro",
+    "biomass",
+    "geothermal",
+    "natural_gas",
+    "nuclear",
   ]),
   status: zod.enum(["active", "inactive", "under_review", "contracted"]),
   capacityMw: zod.number(),
@@ -548,6 +690,38 @@ export const GetTopCandidatesResponseItem = zod.object({
   demandProximityScore: zod.number().optional(),
   developmentRiskScore: zod.number().optional(),
   notes: zod.string().optional(),
+  recEligible: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Whether this asset type earns RECs (solar, wind, hydro, geothermal, biomass = eligible; storage, gas, nuclear = not)",
+    ),
+  annualRecMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Estimated annual REC generation in MWh (capacity × capacity_factor × 8760)",
+    ),
+  recPricePerMwh: zod
+    .number()
+    .optional()
+    .describe(
+      "Market benchmark REC price in $\/MWh (ERCOT TRC ~$1.50, CAISO WREGIS ~$7-12, PJM $2-120)",
+    ),
+  annualRecValueUsd: zod
+    .number()
+    .optional()
+    .describe("Estimated annual REC revenue in USD"),
+  lifetimeRecValue20yr: zod
+    .number()
+    .optional()
+    .describe("20-year undiscounted REC value in USD"),
+  recMarketLabel: zod
+    .string()
+    .optional()
+    .describe(
+      "Human-readable label for the REC market (e.g. Texas TRC, CA WREGIS RPS)",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });

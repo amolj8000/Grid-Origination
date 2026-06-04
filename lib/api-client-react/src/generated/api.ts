@@ -896,7 +896,7 @@ export const useDeleteScreening = <
 };
 
 /**
- * @summary List ERCOT hub/zone monthly stats
+ * @summary List ERCOT hub/zone/resource-node monthly stats
  */
 export const getListErcotNodeStatsUrl = (params?: ListErcotNodeStatsParams) => {
   const normalizedParams = new URLSearchParams();
@@ -966,7 +966,7 @@ export type ListErcotNodeStatsQueryResult = NonNullable<
 export type ListErcotNodeStatsQueryError = ErrorType<unknown>;
 
 /**
- * @summary List ERCOT hub/zone monthly stats
+ * @summary List ERCOT hub/zone/resource-node monthly stats
  */
 
 export function useListErcotNodeStats<

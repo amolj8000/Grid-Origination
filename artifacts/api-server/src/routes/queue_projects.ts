@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, queueProjectsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { ListQueueProjectsQueryParams } from "@workspace/api-zod";
+import { computeRec } from "../lib/rec";
 
 const router = Router();
 
@@ -24,12 +25,17 @@ router.get("/queue-projects", async (req, res) => {
       .limit(limit)
       .orderBy(queueProjectsTable.requestDate);
 
-    res.json(rows.map(r => ({
-      ...r,
-      capacityMw: Number(r.capacityMw),
-      latitude: r.latitude ? Number(r.latitude) : null,
-      longitude: r.longitude ? Number(r.longitude) : null,
-    })));
+    res.json(rows.map(r => {
+      const capacityMw = Number(r.capacityMw);
+      const rec = computeRec(r.fuelType, r.market, capacityMw);
+      return {
+        ...r,
+        capacityMw,
+        latitude: r.latitude ? Number(r.latitude) : null,
+        longitude: r.longitude ? Number(r.longitude) : null,
+        ...rec,
+      };
+    }));
   } catch (err) {
     req.log.error({ err }, "listQueueProjects error");
     res.status(500).json({ error: "internal_error", message: "Failed to list queue projects" });

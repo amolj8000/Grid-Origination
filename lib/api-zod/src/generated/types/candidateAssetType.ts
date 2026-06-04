@@ -15,4 +15,9 @@ export const CandidateAssetType = {
   storage: "storage",
   solar_storage: "solar_storage",
   wind_storage: "wind_storage",
+  hydro: "hydro",
+  biomass: "biomass",
+  geothermal: "geothermal",
+  natural_gas: "natural_gas",
+  nuclear: "nuclear",
 } as const;

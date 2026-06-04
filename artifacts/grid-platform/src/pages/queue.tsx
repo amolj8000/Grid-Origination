@@ -65,7 +65,7 @@ export default function InterconnectionQueue() {
   const [marketFilter, setMarketFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [fuelFilter, setFuelFilter] = useState<string | undefined>(undefined);
-  const [sortField, setSortField] = useState<"requestDate" | "capacityMw">("requestDate");
+  const [sortField, setSortField] = useState<"requestDate" | "capacityMw" | "annualRecValueUsd">("requestDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const { data: queueProjects, isLoading } = useListQueueProjects({
@@ -85,6 +85,11 @@ export default function InterconnectionQueue() {
     rows = [...rows].sort((a, b) => {
       if (sortField === "capacityMw") {
         return sortDir === "desc" ? (b.capacityMw ?? 0) - (a.capacityMw ?? 0) : (a.capacityMw ?? 0) - (b.capacityMw ?? 0);
+      }
+      if (sortField === "annualRecValueUsd") {
+        const av = (a as any).annualRecValueUsd ?? 0;
+        const bv = (b as any).annualRecValueUsd ?? 0;
+        return sortDir === "desc" ? bv - av : av - bv;
       }
       const da = a.requestDate ? new Date(a.requestDate).getTime() : 0;
       const db2 = b.requestDate ? new Date(b.requestDate).getTime() : 0;
@@ -299,18 +304,24 @@ export default function InterconnectionQueue() {
               >
                 Queue Date {sortField === "requestDate" ? (sortDir === "desc" ? "↓" : "↑") : ""}
               </TableHead>
+              <TableHead
+                className="text-right w-[110px] cursor-pointer select-none hover:text-foreground"
+                onClick={() => toggleSort("annualRecValueUsd")}
+              >
+                REC/yr {sortField === "annualRecValueUsd" ? (sortDir === "desc" ? "↓" : "↑") : ""}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center">
+                <TableCell colSpan={10} className="h-24 text-center">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filteredProjects.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
                   No queue projects found matching filters.
                 </TableCell>
               </TableRow>
@@ -355,6 +366,20 @@ export default function InterconnectionQueue() {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
                     {project.requestDate ? new Date(project.requestDate).toLocaleDateString() : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(project as any).recEligible ? (
+                      <span
+                        className="text-xs font-medium text-emerald-400"
+                        title={`${((project as any).annualRecMwh ?? 0).toLocaleString()} RECs/yr @ $${(project as any).recPricePerMwh}/MWh · ${(project as any).recMarketLabel} · 20yr: ${(project as any).lifetimeRecValue20yr >= 1_000_000 ? `$${((project as any).lifetimeRecValue20yr / 1_000_000).toFixed(1)}M` : `$${((project as any).lifetimeRecValue20yr / 1_000).toFixed(0)}k`}`}
+                      >
+                        {(project as any).annualRecValueUsd >= 1_000_000
+                          ? `$${((project as any).annualRecValueUsd / 1_000_000).toFixed(1)}M`
+                          : `$${((project as any).annualRecValueUsd / 1_000).toFixed(0)}k`}/yr
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/40">—</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

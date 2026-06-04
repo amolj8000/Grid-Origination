@@ -106,6 +106,13 @@ const PROXY_NODE_LABEL: Record<string, Record<string, string>> = {
   },
 };
 
+// ─── REC value formatter ──────────────────────────────────────────────────────
+function fmtRec(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}k`;
+  return `$${v.toFixed(0)}`;
+}
+
 // ─── Score color helper ───────────────────────────────────────────────────────
 function scoreColor(v: number) {
   if (v >= 75) return "text-emerald-400";
@@ -152,7 +159,7 @@ export default function Rankings() {
   const [searchTerm, setSearchTerm] = useState("");
   const [marketFilter, setMarketFilter] = useState<string | undefined>(searchParams.get("market") as any || undefined);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string | undefined>(searchParams.get("assetType") as any || undefined);
-  const [sortField, setSortField] = useState<"overallScore" | "curtailmentScore" | "interconnectionScore" | "locationScore" | "priceScore" | "demandProximityScore">("overallScore");
+  const [sortField, setSortField] = useState<"overallScore" | "curtailmentScore" | "interconnectionScore" | "locationScore" | "priceScore" | "demandProximityScore" | "annualRecValueUsd">("overallScore");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -204,7 +211,7 @@ export default function Rankings() {
 
   const handleExportCsv = () => {
     if (!candidates) return;
-    const headers = ["Name", "Market", "Asset Type", "Capacity (MW)", "Overall", "Curtailment", "Congestion", "Basis Risk", "Price", "Capacity Score", "Asset Age", "State", "County", "COD"];
+    const headers = ["Name", "Market", "Asset Type", "Capacity (MW)", "Overall", "Curtailment", "Congestion", "Basis Risk", "Price", "Capacity Score", "Asset Age", "State", "County", "COD", "REC Eligible", "Annual RECs (MWh)", "REC Price ($/MWh)", "Annual REC Value ($)", "20yr REC Value ($)", "REC Market"];
     const rows = candidates.map(c => [
       `"${c.name}"`, c.market, c.assetType, c.capacityMw,
       c.overallScore,
@@ -216,6 +223,12 @@ export default function Rankings() {
       (c as any).financialScore ?? "",
       c.state ?? "", c.county ?? "",
       (c as any).commissioningYear ?? "",
+      (c as any).recEligible ? "Yes" : "No",
+      (c as any).annualRecMwh ?? 0,
+      (c as any).recPricePerMwh ?? 0,
+      (c as any).annualRecValueUsd ?? 0,
+      (c as any).lifetimeRecValue20yr ?? 0,
+      `"${(c as any).recMarketLabel ?? ""}"`,
     ]);
     const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
     const a = document.createElement("a");
@@ -396,19 +409,22 @@ export default function Rankings() {
                 </TableHead>
                 <TableHead>COD</TableHead>
                 <TableHead>State</TableHead>
+                <TableHead className="text-right">
+                  <SortHeader field="annualRecValueUsd" label="REC/yr" />
+                </TableHead>
                 <TableHead className="text-right text-xs">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-32 text-center">
+                  <TableCell colSpan={11} className="h-32 text-center">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
                     No candidates found.
                   </TableCell>
                 </TableRow>
@@ -467,6 +483,23 @@ export default function Rankings() {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {c.state ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className={`text-xs font-medium cursor-default ${(c as any).recEligible ? "text-emerald-400" : "text-muted-foreground/50"}`}>
+                              {(c as any).recEligible ? `${fmtRec((c as any).annualRecValueUsd)}/yr` : "—"}
+                            </span>
+                          </TooltipTrigger>
+                          {(c as any).recEligible && (
+                            <TooltipContent side="left" className="text-xs max-w-[210px]">
+                              <p className="font-semibold mb-1">REC Valuation</p>
+                              <p>{((c as any).annualRecMwh ?? 0).toLocaleString()} RECs/yr @ ${(c as any).recPricePerMwh}/MWh</p>
+                              <p className="text-muted-foreground">{(c as any).recMarketLabel}</p>
+                              <p className="text-muted-foreground mt-0.5">20-yr value: {fmtRec((c as any).lifetimeRecValue20yr)}</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button

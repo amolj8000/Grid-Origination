@@ -5,12 +5,14 @@
  * Grid Origination Intelligence Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListErcotNodeStatsNodeType } from "./listErcotNodeStatsNodeType";
+import type { ListErcotNodeStatsSortBy } from "./listErcotNodeStatsSortBy";
 
 export type ListErcotNodeStatsParams = {
   node?: string;
-  nodeType?: "hub" | "load_zone" | "resource_node";
+  nodeType?: ListErcotNodeStatsNodeType;
   year?: number;
   month?: number;
-  sortBy?: "neg_price_percent" | "volatility" | "avg_rt_price" | "price_range";
+  sortBy?: ListErcotNodeStatsSortBy;
   limit?: number;
 };

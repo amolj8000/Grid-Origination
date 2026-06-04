@@ -23,4 +23,16 @@ export interface QueueProject {
   requestDate?: Date;
   studyGroupPhase?: string;
   withdrawalDate?: Date;
+  /** Whether this fuel type earns RECs */
+  recEligible?: boolean;
+  /** Estimated annual REC generation in MWh */
+  annualRecMwh?: number;
+  /** Market benchmark REC price in $/MWh */
+  recPricePerMwh?: number;
+  /** Estimated annual REC revenue in USD */
+  annualRecValueUsd?: number;
+  /** 20-year undiscounted REC value in USD */
+  lifetimeRecValue20yr?: number;
+  /** Human-readable label for the REC market */
+  recMarketLabel?: string;
 }
