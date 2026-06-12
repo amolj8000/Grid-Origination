@@ -21,6 +21,7 @@
     "score-ercot-congestion": "tsx ./src/score-ercot-congestion.ts",
     "score-caiso-congestion": "tsx ./src/score-caiso-congestion.ts",
     "assign-and-score-nodal": "tsx ./src/assign-and-score-nodal.ts",
+    "seed-ercot-hourly": "tsx ./src/seed-ercot-hourly.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -25,6 +25,9 @@ import CIBasis from "@/pages/ci-basis";
 import CIBacktest from "@/pages/ci-backtest";
 import CIQuality from "@/pages/ci-quality";
 import CIMethodology from "@/pages/ci-methodology";
+import PypsaNetwork from "@/pages/pypsa-network";
+import PypsaML from "@/pages/pypsa-ml";
+import PypsaHourly from "@/pages/pypsa-hourly";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -54,6 +57,9 @@ function Router() {
         <Route path="/ci-backtest" component={CIBacktest} />
         <Route path="/ci-quality" component={CIQuality} />
         <Route path="/ci-methodology" component={CIMethodology} />
+        <Route path="/pypsa-network" component={PypsaNetwork} />
+        <Route path="/pypsa-ml" component={PypsaML} />
+        <Route path="/pypsa-hourly" component={PypsaHourly} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

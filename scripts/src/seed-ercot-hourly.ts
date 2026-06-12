@@ -1,0 +1,216 @@
+/**
+ * seed-ercot-hourly.ts
+ *
+ * Extracts HOURLY DA + RT prices for all 15 ERCOT hub/zone settlement points
+ * from CDR reports 13060 (DAM) and 13061 (RTM).
+ *
+ * RTM: 15-min intervals per hour → averaged to hourly.
+ * DAM: already hourly.
+ *
+ * Stores to ercot_hub_hourly table.
+ * ~240,000 rows expected (15 nodes × ~2.25 years × 8,760 hr/yr)
+ */
+
+import { db } from "@workspace/db";
+import { ercotHubHourlyTable } from "@workspace/db";
+import * as https from "node:https";
+import * as zlib from "node:zlib";
+import { sql } from "drizzle-orm";
+import * as XLSX from "xlsx";
+
+const CDR = "https://www.ercot.com/misdownload/servlets/mirDownload?mimic_duns=000000000&doclookupId=";
+
+const RTM_IDS: Record<number, string> = {
+  2024: "1065471230",
+  2025: "1177737535",
+  2026: "1220061372",
+};
+const DAM_IDS: Record<number, string> = {
+  2024: "1065468714",
+  2025: "1177667469",
+  2026: "1219858972",
+};
+
+const HUB_ZONE_NODES = new Set([
+  "HB_BUSAVG","HB_HOUSTON","HB_HUBAVG","HB_NORTH","HB_PAN","HB_SOUTH","HB_WEST",
+  "LZ_AEN","LZ_CPS","LZ_HOUSTON","LZ_LCRA","LZ_NORTH","LZ_RAYBN","LZ_SOUTH","LZ_WEST",
+]);
+
+function nodeType(sp: string): "hub" | "load_zone" {
+  return sp.startsWith("HB_") ? "hub" : "load_zone";
+}
+
+function downloadBuffer(url: string, redirects = 0): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    if (redirects > 5) return reject(new Error("Too many redirects"));
+    let settled = false;
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res): void => {
+      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+        void downloadBuffer(res.headers.location, redirects + 1).then(resolve).catch(reject);
+        return;
+      }
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => { if (!settled) { settled = true; resolve(Buffer.concat(chunks)); } });
+      res.on("error", (e) => { if (!settled) { settled = true; reject(e); } });
+    }).on("error", (e) => { if (!settled) { settled = true; reject(e); } });
+  });
+}
+
+function extractXlsxFromZip(buf: Buffer): Buffer {
+  let eocdOff = buf.length - 22;
+  while (eocdOff >= 0 && buf.readUInt32LE(eocdOff) !== 0x06054b50) eocdOff--;
+  if (eocdOff < 0) throw new Error("No EOCD in ZIP");
+  let cdOff = buf.readUInt32LE(eocdOff + 16);
+  const z64Loc = eocdOff - 20;
+  if (z64Loc >= 0 && buf.readUInt32LE(z64Loc) === 0x07064b50) {
+    const z64Pos = buf.readUInt32LE(z64Loc + 8) + buf.readUInt32LE(z64Loc + 12) * 4294967296;
+    if (z64Pos < buf.length && buf.readUInt32LE(z64Pos) === 0x06064b50)
+      cdOff = buf.readUInt32LE(z64Pos + 48) + buf.readUInt32LE(z64Pos + 52) * 4294967296;
+  }
+  let compSize = buf.readUInt32LE(cdOff + 20);
+  let localOff = buf.readUInt32LE(cdOff + 42);
+  const fnLen = buf.readUInt16LE(cdOff + 28), extraLen = buf.readUInt16LE(cdOff + 30);
+  let ep = cdOff + 46 + fnLen, eEnd = ep + extraLen;
+  while (ep < eEnd - 3) {
+    const tag = buf.readUInt16LE(ep), sz = buf.readUInt16LE(ep + 2);
+    if (tag === 0x0001) {
+      let p = ep + 4;
+      const usz = buf.readUInt32LE(cdOff + 24);
+      if (usz === 0xFFFFFFFF && p + 8 <= ep + 4 + sz) p += 8;
+      if (compSize === 0xFFFFFFFF && p + 8 <= ep + 4 + sz) { compSize = buf.readUInt32LE(p) + buf.readUInt32LE(p+4)*4294967296; p += 8; }
+      if (localOff === 0xFFFFFFFF && p + 8 <= ep + 4 + sz) localOff = buf.readUInt32LE(p) + buf.readUInt32LE(p+4)*4294967296;
+    }
+    ep += 4 + sz;
+  }
+  const lFnLen = buf.readUInt16LE(localOff + 26), lExLen = buf.readUInt16LE(localOff + 28);
+  const dataStart = localOff + 30 + lFnLen + lExLen;
+  return zlib.inflateRawSync(buf.slice(dataStart, dataStart + compSize));
+}
+
+function parseDate(s: string): { year: number; month: number; day: number } {
+  const [mm, dd, yyyy] = s.split("/").map(Number);
+  return { year: yyyy, month: mm, day: dd };
+}
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// key: "SP|YYYY|MM|DD|HH"
+type HourKey = string;
+type HourAgg = { da: number[]; rt: number[] };
+
+function hkey(sp: string, year: number, month: number, day: number, hour: number): HourKey {
+  return `${sp}|${year}|${month}|${day}|${hour}`;
+}
+
+function parseRtmSheet(ws: XLSX.WorkSheet, map: Map<HourKey, HourAgg>) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as (string | number)[][];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length < 7) continue;
+    const dateStr = r[0] as string;
+    const hourRaw = r[1];
+    const flag = r[3] as string;
+    const sp = r[4] as string;
+    const price = Number(r[6]);
+    if (flag === "Y" || !sp || isNaN(price) || !dateStr?.includes("/")) continue;
+    if (!HUB_ZONE_NODES.has(sp)) continue;
+    const { year, month, day } = parseDate(dateStr);
+    const hour = typeof hourRaw === "number" ? hourRaw : parseInt(String(hourRaw));
+    if (isNaN(hour)) continue;
+    const k = hkey(sp, year, month, day, hour);
+    const agg = map.get(k) ?? { da: [], rt: [] };
+    agg.rt.push(price);
+    map.set(k, agg);
+  }
+}
+
+function parseDamSheet(ws: XLSX.WorkSheet, map: Map<HourKey, HourAgg>) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as (string | number)[][];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length < 5) continue;
+    const dateStr = r[0] as string;
+    const flag = r[2] as string;
+    const sp = r[3] as string;
+    const price = Number(r[4]);
+    if (flag === "Y" || !sp || isNaN(price) || !dateStr?.includes("/")) continue;
+    if (!HUB_ZONE_NODES.has(sp)) continue;
+    const { year, month, day } = parseDate(dateStr);
+    const hourRaw = r[1];
+    const hour = typeof hourRaw === "number" ? hourRaw : parseInt(String(hourRaw));
+    if (isNaN(hour)) continue;
+    const k = hkey(sp, year, month, day, hour);
+    const agg = map.get(k) ?? { da: [], rt: [] };
+    agg.da.push(price);
+    map.set(k, agg);
+  }
+}
+
+function mean(a: number[]) { return a.length === 0 ? null : a.reduce((s, v) => s + v, 0) / a.length; }
+
+async function processYear(year: number, map: Map<HourKey, HourAgg>) {
+  for (const [type, ids] of [["RTM", RTM_IDS], ["DAM", DAM_IDS]] as const) {
+    const url = CDR + ids[year as keyof typeof ids];
+    console.log(`  [${year}] Downloading ${type}...`);
+    const buf = await downloadBuffer(url);
+    console.log(`  [${year}] ${type} zip: ${(buf.length/1024/1024).toFixed(1)} MB → extracting...`);
+    const xlBuf = extractXlsxFromZip(buf);
+    console.log(`  [${year}] ${type} XLSX: ${(xlBuf.length/1024/1024).toFixed(1)} MB → parsing...`);
+    const wb = XLSX.read(xlBuf, { type: "buffer" });
+    for (const sn of wb.SheetNames) {
+      if (!MONTHS.includes(sn)) continue;
+      if (type === "RTM") parseRtmSheet(wb.Sheets[sn], map);
+      else parseDamSheet(wb.Sheets[sn], map);
+      process.stdout.write(`\r    ${sn} `);
+    }
+    console.log();
+  }
+}
+
+async function main() {
+  console.log("=== ERCOT Hourly Price Seed ===");
+  console.log("Source: CDR 13061 RTM + 13060 DAM — all 15 hub/zone settlement points\n");
+
+  const map = new Map<HourKey, HourAgg>();
+  for (const year of [2024, 2025, 2026]) {
+    console.log(`[Year ${year}]`);
+    await processYear(year, map);
+  }
+
+  console.log(`\nCollected ${map.size} node-hour combinations`);
+
+  type Row = typeof ercotHubHourlyTable.$inferInsert;
+  const rows: Row[] = [];
+  for (const [k, agg] of map.entries()) {
+    const parts = k.split("|");
+    const sp = parts[0], year = Number(parts[1]), month = Number(parts[2]),
+          day = Number(parts[3]), hour = Number(parts[4]);
+    const daAvg = mean(agg.da), rtAvg = mean(agg.rt);
+    if (daAvg === null && rtAvg === null) continue;
+    rows.push({
+      node: sp,
+      nodeType: nodeType(sp),
+      year, month, day, hour,
+      daPrice: daAvg !== null ? daAvg.toFixed(4) : null,
+      rtPrice: rtAvg !== null ? rtAvg.toFixed(4) : null,
+    });
+  }
+
+  console.log(`Inserting ${rows.length} hourly rows (ON CONFLICT DO NOTHING)...`);
+
+  const BATCH = 500;
+  let inserted = 0;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    await db.insert(ercotHubHourlyTable)
+      .values(rows.slice(i, i + BATCH))
+      .onConflictDoNothing();
+    inserted += Math.min(BATCH, rows.length - i);
+    process.stdout.write(`\r  ${inserted} / ${rows.length}`);
+  }
+
+  console.log(`\n✓ Inserted ${rows.length} hourly rows into ercot_hub_hourly.`);
+  process.exit(0);
+}
+
+main().catch(e => { console.error(e); process.exit(1); });

@@ -5,6 +5,7 @@ import {
   MessageSquare, Download, Bookmark, ChevronRight, Menu,
   TerminalSquare, GitBranch, BookOpen, Leaf, Cpu, Flame,
   MapPin, FlaskConical, ShieldCheck, BookMarked, ChevronDown,
+  Brain, Clock, Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -47,6 +48,18 @@ const sidebarEntries: NavEntry[] = [
         { title: "2026 Backtest",     href: "/ci-backtest",    icon: FlaskConical },
         { title: "Data Quality",      href: "/ci-quality",     icon: ShieldCheck },
         { title: "Methodology",       href: "/ci-methodology", icon: BookMarked },
+      ],
+    },
+  },
+  {
+    group: {
+      label: "PyPSA Engine",
+      icon: Network,
+      defaultOpen: false,
+      items: [
+        { title: "OPF Network",     href: "/pypsa-network", icon: Zap },
+        { title: "ML Model",        href: "/pypsa-ml",      icon: Brain },
+        { title: "Hourly Data",     href: "/pypsa-hourly",  icon: Clock },
       ],
     },
   },

@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "postgresql-16", "python-3.11"]
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -10,6 +10,27 @@ env = { "CI" = "true" }
 
 [workflows]
 runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/pypsa-engine: PyPSA Engine"
+
+[[workflows.workflow]]
+name = "artifacts/pypsa-engine: PyPSA Engine"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/pypsa-engine && PORT=8083 .venv/bin/python main.py"
+waitForPort = 8083
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -32,11 +53,16 @@ localPort = 8082
 externalPort = 3000
 
 [[ports]]
+localPort = 8083
+externalPort = 3001
+
+[[ports]]
 localPort = 19925
 externalPort = 80
 
 [nix]
 channel = "stable-25_05"
+packages = ["glibcLocales"]
 
 [userenv]
 
