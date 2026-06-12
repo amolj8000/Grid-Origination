@@ -1,0 +1,311 @@
+Build a new feature in my existing Base44 app called:
+
+ERCOT Congestion Intelligence Engine
+
+Purpose:
+Create a portfolio-grade power market analytics feature that uses the ERCOT zonal, LMP-level, settlement point, node-level, and bus-level data already available in the app to analyze, predict, and explain congestion and basis risk. The feature should also include a simplified PyPSA-based simulation layer if technically feasible.
+
+Primary objective:
+Use existing app data from 2024 onward as the source of truth. Do not use data before 2024. If any required ERCOT data is missing from the app, retrieve or reference the missing data from ERCOT public market data sources, but only for 2024 onward.
+
+Important data rule:
+Use app data first. Only supplement missing fields from ERCOT public data. Keep a data-source flag on every record showing whether the data came from:
+
+1. Existing app data
+2. ERCOT supplemental data
+3. Derived/calculated field
+
+Feature scope:
+
+1. Historical Congestion Analytics
+
+Use the available ERCOT data to calculate and display:
+
+* Hub price
+* Load zone price
+* Node/bus LMP
+* Settlement point price
+* Node-to-hub basis
+* Zone-to-hub basis
+* Node-to-zone basis
+* DAM vs RTM spread
+* Congestion component, if available
+* Loss component, if available
+* Price adder, if available
+* Negative price events
+* Price spike events
+* Volatility by node, zone, hub, and settlement point
+* Frequency of congestion events by hour, day, month, and season
+
+Create a calculated congestion event flag using a configurable threshold:
+
+* Congestion event = absolute node-to-hub basis greater than user-selected threshold, default $10/MWh
+* Severe congestion event = absolute node-to-hub basis greater than $25/MWh
+* Extreme congestion event = absolute node-to-hub basis greater than $50/MWh
+
+Allow users to change these thresholds in the UI.
+
+2. Congestion Prediction Model
+
+Build a forecasting model that predicts congestion and basis risk.
+
+Model targets:
+
+* Probability of congestion event
+* Expected node-to-hub basis
+* Expected zone-to-hub basis
+* Expected DAM vs RTM spread
+* Probability of negative pricing
+* Probability of price spike
+* Volatility risk score
+
+Training and testing:
+
+* Train only on 2024 and 2025 data.
+* Treat 2026 as an out-of-sample backtest period.
+* Do not use 2026 actuals for model training.
+* Generate predictions for 2026 timestamps where actuals exist.
+* Compare 2026 predicted values to 2026 actuals already in the app.
+* If 2026 actuals are missing, supplement from ERCOT public data, but only for 2026 dates that are available.
+
+Suggested model features:
+
+* Hour of day
+* Day of week
+* Month
+* Weekend/weekday flag
+* Market type: DAM or RTM
+* Hub
+* Load zone
+* Node/bus
+* Settlement point
+* Prior interval LMP
+* Prior interval basis
+* Rolling average basis
+* Rolling volatility
+* Historical same-hour average basis
+* Historical same-hour percentile
+* Load, if available
+* Wind generation, if available
+* Solar generation, if available
+* Temperature, if available
+* Outage/derate information, if available
+* Scarcity or price adder, if available
+
+Use a practical modelling approach:
+
+* Start with baseline models such as historical percentile, moving average, and seasonal/hourly averages.
+* Then add machine learning models such as Random Forest, Gradient Boosting, XGBoost, or LightGBM if available.
+* Use explainability where possible, such as feature importance or SHAP-style explanations if supported.
+
+3. 2026 Forecast vs Actual Backtest
+
+Create a dedicated screen called “2026 Forecast Accuracy”.
+
+This screen should show:
+
+* Actual 2026 congestion events
+* Predicted 2026 congestion events
+* Predicted vs actual basis
+* Prediction error by node
+* Prediction error by hub
+* Prediction error by load zone
+* Prediction error by month
+* Hit rate for severe congestion events
+* False positives and false negatives
+* Top nodes where the model performs well
+* Top nodes where the model performs poorly
+
+Metrics:
+
+* MAE for basis prediction
+* RMSE for basis prediction
+* MAPE where appropriate
+* Classification accuracy for congestion event prediction
+* Precision, recall, and F1 score for congestion event detection
+* AUC if probability scores are available
+* Directional accuracy: whether the model predicted the correct sign of basis
+* Top-decile capture rate: whether the model identified the highest-risk congestion intervals
+
+Important:
+Present this as a backtest, not as a perfect forecast. Add clear language in the UI:
+“Model trained on 2024–2025 data and tested against unseen 2026 actuals.”
+
+4. Congestion Heat Map
+
+Create a heat map or ranked table showing congestion risk across ERCOT:
+
+* Hubs
+* Load zones
+* Settlement points
+* Nodes/buses, where available
+
+Show:
+
+* Current or latest available congestion risk
+* Historical average basis
+* Forecasted basis
+* Probability of congestion
+* Negative price risk
+* Spike risk
+* Volatility score
+* Last updated timestamp
+
+Suggested color logic:
+
+* Green = low congestion risk
+* Yellow = moderate congestion risk
+* Red = high congestion risk
+* Blue = negative-price risk
+* Purple = scarcity/spike risk
+
+5. Node / Bus Detail Page
+
+For each selected node, bus, settlement point, hub, or load zone, create a detail page with:
+
+* Historical LMP chart
+* Node-to-hub basis chart
+* DAM vs RTM spread chart
+* Congestion frequency chart
+* Negative price frequency
+* Spike frequency
+* Rolling volatility
+* Forecasted congestion probability
+* Forecasted basis
+* Actual vs predicted comparison for 2026
+* Top historical congestion intervals
+* Similar nodes or correlated nodes
+
+6. Basis Risk Analyzer
+
+Create a screen that allows the user to compare:
+
+* Node vs hub
+* Node vs load zone
+* Load zone vs hub
+* DAM vs RTM
+* Hub vs hub
+* Zone vs zone
+
+Outputs:
+
+* Average basis
+* Median basis
+* 5th percentile basis
+* 95th percentile basis
+* Worst 10 events
+* Best 10 events
+* Volatility
+* Frequency of negative basis
+* Frequency of positive basis
+* Correlation
+* Hedge effectiveness score
+
+7. PyPSA Simulation Layer
+
+Look for the open-source PyPSA repository on GitHub. The likely repository is PyPSA/PyPSA.
+
+If the app can integrate Python packages or call a Python backend, add a simplified PyPSA simulation engine. If the app cannot run PyPSA directly, create an API placeholder/stub that can call a future Python backend.
+
+Do not attempt to build a full ERCOT production-grade grid model. Instead, build a simplified educational/simulation model that demonstrates how congestion occurs.
+
+The PyPSA simulation layer should allow scenario testing:
+
+* Increase West Texas wind output by selected percentage
+* Increase solar output by selected percentage
+* Increase Houston load by selected percentage
+* Increase North load by selected percentage
+* Reduce transfer capacity between simplified ERCOT regions
+* Derate a constrained path
+* Add or remove generation capacity
+* Change marginal cost assumptions
+* Simulate scarcity pricing behavior if data is available
+
+Simplified PyPSA network:
+Create a simplified regional ERCOT network using representative buses such as:
+
+* HB_NORTH
+* HB_HOUSTON
+* HB_SOUTH
+* HB_WEST
+* LZ_NORTH
+* LZ_HOUSTON
+* LZ_SOUTH
+* LZ_WEST
+
+If bus-level mapping exists in the app, use it to improve the simplified network. If physical topology is not available, clearly label this as a simplified scenario model, not a full ERCOT grid model.
+
+PyPSA outputs to display:
+
+* Simulated marginal prices by bus
+* Simulated line/transfer flows
+* Binding constraints
+* Congestion rent
+* Generator dispatch
+* Load served
+* Renewable curtailment, if applicable
+* Price separation between regions
+* Before/after scenario comparison
+
+UI language:
+“This simulation uses a simplified PyPSA-based network to illustrate congestion mechanics. It is not a full ERCOT production-grade power flow model.”
+
+8. Recruiter / Portfolio Case Study Page
+
+Add a page called “Methodology & Portfolio Case Study”.
+
+This page should explain:
+
+* Problem statement: ERCOT congestion and basis risk are material drivers of power market economics.
+* Data used: ERCOT hub, load zone, settlement point, LMP, node, and bus-level data from 2024 onward.
+* Analytics layer: historical basis, congestion frequency, volatility, and price-spike detection.
+* Predictive layer: model trained on 2024–2025 and backtested against 2026 actuals.
+* Simulation layer: simplified PyPSA model used to explain how constraints can create price separation.
+* Business value: supports traders, analysts, renewable developers, and risk teams in understanding where congestion risk is emerging.
+* Technical skills demonstrated: Python, power market analytics, ERCOT LMP analysis, congestion modelling, forecasting, backtesting, PyPSA, data engineering, and product design.
+
+9. Data Validation and Quality Controls
+
+Add validation checks:
+
+* Detect missing timestamps
+* Detect duplicate node/timestamp records
+* Detect outlier prices
+* Detect inconsistent market types
+* Detect missing hub/zone mappings
+* Detect missing 2026 actuals
+* Track data completeness by year, market type, zone, and node
+
+Create a data quality dashboard showing:
+
+* Number of records by year
+* Number of records by market type
+* Number of unique hubs/zones/nodes/buses
+* Missing data percentage
+* Supplemental ERCOT data percentage
+* Last refresh date
+
+10. Deliverables
+
+Build the following screens:
+
+1. ERCOT Congestion Overview
+2. Congestion Heat Map
+3. Node / Bus Detail
+4. Basis Risk Analyzer
+5. Congestion Forecast
+6. 2026 Forecast vs Actual Backtest
+7. PyPSA Scenario Simulator
+8. Data Quality Dashboard
+9. Methodology & Portfolio Case Study
+
+Make the UI polished, recruiter-friendly, and easy to demo.
+
+Use plain-English explanations throughout the app. Avoid overclaiming. Clearly distinguish:
+
+* Historical actuals
+* Forecasted values
+* Backtested predictions
+* Simulated PyPSA scenario outputs
+
+The app should be credible, visually impressive, and technically strong enough to show to recruiters, hiring managers, and energy-market analytics teams.
