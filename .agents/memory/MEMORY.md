@@ -1,3 +1,4 @@
+- [Congestion Intelligence Engine](congestion-intel.md) — Phase 1 (7 screens on ercot_node_stats) complete; Phase 2 = PyPSA Python microservice + hourly hub/zone data.
 - [ERCOT curtailment scoring](ercot-curtailment-scoring.md) — zone+asset-type scoring wired to real CDR data; run score-ercot-curtailment script to refresh after new node data.
 - [CAISO curtailment scoring](caiso-curtailment-scoring.md) — zone+asset-type scoring from real OASIS data; ZP26/SP15 solar score ~68-73, NP15 solar ~92; run score-caiso-curtailment to refresh.
 - [Congestion scoring](congestion-scoring.md) — ERCOT uses hub DA basis (HB_PAN $20.38 → HB_HOUSTON $35.42, CDR 13060); CAISO uses zone DA basis + volatility (OASIS); both real 28-month data.

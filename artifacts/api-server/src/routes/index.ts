@@ -6,6 +6,7 @@ import energyStatsRouter from "./energy_stats";
 import queueProjectsRouter from "./queue_projects";
 import dashboardRouter from "./dashboard";
 import chatRouter from "./chat";
+import congestionIntelRouter from "./congestion_intel";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(energyStatsRouter);
 router.use(queueProjectsRouter);
 router.use(dashboardRouter);
 router.use(chatRouter);
+router.use(congestionIntelRouter);
 
 export default router;

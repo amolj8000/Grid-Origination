@@ -18,6 +18,13 @@ import QACopilot from "@/pages/qa";
 import ExportCenter from "@/pages/export";
 import SavedScreenings from "@/pages/screenings";
 import PlatformGuide from "@/pages/guide";
+import CIOverview from "@/pages/ci-overview";
+import CIHeatmap from "@/pages/ci-heatmap";
+import CINode from "@/pages/ci-node";
+import CIBasis from "@/pages/ci-basis";
+import CIBacktest from "@/pages/ci-backtest";
+import CIQuality from "@/pages/ci-quality";
+import CIMethodology from "@/pages/ci-methodology";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -40,6 +47,13 @@ function Router() {
         <Route path="/export" component={ExportCenter} />
         <Route path="/screenings" component={SavedScreenings} />
         <Route path="/guide" component={PlatformGuide} />
+        <Route path="/ci" component={CIOverview} />
+        <Route path="/ci-heatmap" component={CIHeatmap} />
+        <Route path="/ci-node" component={CINode} />
+        <Route path="/ci-basis" component={CIBasis} />
+        <Route path="/ci-backtest" component={CIBacktest} />
+        <Route path="/ci-quality" component={CIQuality} />
+        <Route path="/ci-methodology" component={CIMethodology} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
