@@ -1,0 +1,221 @@
+PyPSA is not mainly a forecasting library. It is an open-source Python framework for optimizing and simulating modern power and energy systems, including generators, renewables, storage, transmission constraints, unit commitment, sector coupling, and linearized power flow.
+
+What PyPSA can be used for
+1. Economic dispatch simulation
+
+This is probably the most useful next feature for your app.
+
+You can use PyPSA to answer:
+
+Given load, generation availability, marginal costs, and network constraints, which generators should dispatch and what prices result?
+
+For your ERCOT app, this could become:
+
+“ERCOT Dispatch Simulator”
+
+Users could change assumptions like:
+
+Wind output
+Solar output
+Gas price / generator marginal cost
+Load growth
+Outage/derate assumptions
+Transmission limits
+
+Then the app shows:
+
+Dispatch by generator type
+Simulated marginal prices
+Price separation by zone/node
+Congestion impact
+Curtailment
+
+PyPSA supports economic dispatch and market-style optimization problems.
+
+2. Linear optimal power flow / LMP simulation
+
+This is the direct extension of your congestion work.
+
+PyPSA can simulate power flows across a network and calculate marginal prices at buses under network constraints. Its examples cover electricity markets, linear optimal power flow, grid modelling, and congestion-type cases.
+
+For your app, this could become:
+
+“Why Did This Node Separate?”
+
+User selects a node, zone, or hub, and the app shows:
+
+Which simplified constraint is binding
+How much flow is moving across paths
+Which region has cheap generation trapped
+Why node-to-hub basis widened
+Simulated before/after LMPs
+
+This would be very compelling because your existing congestion model says where risk exists, while PyPSA can help explain why the risk exists.
+
+3. Renewable curtailment analysis
+
+PyPSA is useful for modelling variable wind and solar generation.
+
+For ERCOT, this is a strong feature because congestion, negative pricing, and curtailment often connect to renewable-heavy regions.
+
+Possible app feature:
+
+“Renewable Curtailment & Negative Price Simulator”
+
+Scenarios:
+
+West Texas wind increases 20%
+Solar output increases during low-load hours
+Export capacity from West is reduced
+Load does not absorb renewable production
+Storage is added at a constrained node
+
+Outputs:
+
+Renewable curtailment
+Negative price risk
+Local LMP suppression
+Congestion rent
+Basis impact
+
+This would be very relevant for renewable developers, traders, and risk teams.
+
+4. Storage optimization
+
+PyPSA can model inter-temporal storage operation, including charging/discharging across time periods.
+
+For your app:
+
+“Battery Revenue & Congestion Relief Simulator”
+
+Questions it can answer:
+
+Where would a battery be most valuable?
+Does storage reduce local negative pricing?
+Does storage reduce congestion?
+What is the arbitrage value between low-price and high-price intervals?
+How does battery dispatch change during congestion events?
+
+Outputs:
+
+Charge/discharge schedule
+Simulated revenue
+LMP impact
+Congestion reduction
+Curtailment reduction
+
+This is one of the best portfolio features because it connects ERCOT congestion, renewables, storage, and market value.
+
+5. Transmission expansion / constraint relief
+
+PyPSA can be used for capacity expansion planning, including trade-offs between generation, storage, and transmission infrastructure.
+
+For your app:
+
+“Transmission Constraint Relief Simulator”
+
+Scenarios:
+
+Increase transfer capacity from West to North
+Add a new simplified link between zones
+Increase line rating by 10%, 20%, 50%
+Compare congestion before and after upgrade
+
+Outputs:
+
+Reduction in congestion hours
+Reduction in average basis
+Reduction in negative pricing
+Change in dispatch
+Change in congestion rent
+Economic value of added transfer capacity
+
+This would be very impressive because it moves from market analytics into planning-style analysis.
+
+6. Capacity expansion planning
+
+PyPSA can optimize investments in generation, storage, and transmission over time.
+
+For your app, this could become a later-stage feature:
+
+“Where Should New Capacity Be Built?”
+
+The model could test:
+
+New solar in West
+New battery in Houston
+New gas peaker in North
+New transmission between West and North
+New load growth from data centers
+
+Outputs:
+
+Optimal added capacity
+Expected dispatch
+Congestion impact
+Simulated price impact
+Curtailment impact
+System cost impact
+
+This is probably not MVP, but it is a strong Phase 2 or Phase 3 feature.
+
+7. Unit commitment
+
+PyPSA can model unit commitment for conventional generators, including on/off commitment decisions.
+
+For your app:
+
+“Generator Commitment Simulator”
+
+It could help show:
+
+Which thermal units would be online/offline
+How minimum generation affects prices
+How ramping or commitment constraints affect scarcity
+How thermal fleet flexibility impacts congestion and price spikes
+
+This is more complex and may require better generator-level data, so I would treat it as advanced.
+
+8. Scarcity / load shedding simulation
+
+PyPSA examples include load shedding and value-of-lost-load style modelling in capacity expansion scenarios.
+
+For ERCOT:
+
+“Scarcity Event Simulator”
+
+Scenarios:
+
+High load
+Low wind
+Reduced thermal availability
+Transmission derate
+Load growth from data centers
+Limited import/export capacity between regions
+
+Outputs:
+
+Unserved energy, if any
+Scarcity price proxy
+Reserve-tightness signal
+Price spike risk
+Most vulnerable zones
+
+This could complement your forecasting layer nicely.
+
+9. Multi-period scenario analysis
+
+PyPSA is designed to scale across large networks and long time series.
+
+For your app, this means you can run scenarios across:
+
+One interval
+One day
+One week
+One representative month
+Seasonal cases
+High-wind / low-load days
+Peak summer days
+Winter storm-like stress cases
+
+This matters because congestion is not just a single-interval problem. It has time-dependent behavior.
