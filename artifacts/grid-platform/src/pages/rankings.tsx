@@ -32,38 +32,38 @@ const OBJECTIVES = [
   {
     id: "risk_adjusted",
     label: "Risk-Adjusted Value",
-    desc: "Curtailment 25% · Congestion 20% · Basis 20% · Price 15% · Capacity 12% · Age 8%",
-    weights: { curtailmentScore: 0.25, interconnectionScore: 0.20, locationScore: 0.20, priceScore: 0.15, demandProximityScore: 0.12, financialScore: 0.08 },
+    desc: "Curtailment 22% · Congestion 18% · Basis 15% · Capture Price 12% · Mkt Revenue 10% · Capacity 10% · Interconnect Risk 8% · RECs 5%",
+    weights: { curtailmentScore: 0.22, interconnectionScore: 0.18, locationScore: 0.15, priceScore: 0.12, financialScore: 0.10, demandProximityScore: 0.10, developmentRiskScore: 0.08, environmentalScore: 0.05 },
   },
   {
     id: "lowest_lcoe",
     label: "Lowest LCOE",
-    desc: "Minimize delivered cost — high energy price score + reliable delivery",
-    weights: { priceScore: 0.35, curtailmentScore: 0.25, interconnectionScore: 0.15, locationScore: 0.10, demandProximityScore: 0.10, financialScore: 0.05 },
+    desc: "Minimize delivered cost — capture price 30% · curtailment 22% · congestion 15% · basis 12% · mkt revenue 10% · capacity 7% · interconnect 4%",
+    weights: { priceScore: 0.30, curtailmentScore: 0.22, interconnectionScore: 0.15, locationScore: 0.12, financialScore: 0.10, demandProximityScore: 0.07, developmentRiskScore: 0.04 },
   },
   {
     id: "corporate_hedge",
     label: "Corporate Load Hedge",
-    desc: "Reliability for Walmart load matching — curtailment, congestion, and basis risk first",
-    weights: { curtailmentScore: 0.35, interconnectionScore: 0.25, locationScore: 0.20, demandProximityScore: 0.15, priceScore: 0.05, financialScore: 0.00 },
+    desc: "Reliability for Walmart load matching — curtailment 30% · congestion 22% · basis 18% · interconnect risk 12% · capture price 8% · capacity 7% · mkt revenue 3%",
+    weights: { curtailmentScore: 0.30, interconnectionScore: 0.22, locationScore: 0.18, developmentRiskScore: 0.12, priceScore: 0.08, demandProximityScore: 0.07, financialScore: 0.03 },
   },
   {
     id: "decarbonization",
     label: "Decarbonization",
-    desc: "Maximize clean MWh delivered — scale and reliable output priority",
-    weights: { demandProximityScore: 0.40, curtailmentScore: 0.25, financialScore: 0.15, interconnectionScore: 0.10, locationScore: 0.05, priceScore: 0.05 },
+    desc: "Maximize clean MWh and REC impact — capacity 25% · curtailment 22% · RECs/yr 20% · mkt revenue 13% · congestion 10% · basis 7% · interconnect 3%",
+    weights: { demandProximityScore: 0.25, curtailmentScore: 0.22, environmentalScore: 0.20, financialScore: 0.13, interconnectionScore: 0.10, locationScore: 0.07, developmentRiskScore: 0.03 },
   },
   {
     id: "capacity_value",
     label: "Capacity Value",
-    desc: "Peak demand support — large, dispatchable, near load",
-    weights: { demandProximityScore: 0.40, curtailmentScore: 0.20, interconnectionScore: 0.15, priceScore: 0.15, locationScore: 0.05, financialScore: 0.05 },
+    desc: "Peak demand support — capacity 35% · curtailment 18% · congestion 15% · capture price 12% · basis 10% · interconnect 7% · mkt revenue 3%",
+    weights: { demandProximityScore: 0.35, curtailmentScore: 0.18, interconnectionScore: 0.15, priceScore: 0.12, locationScore: 0.10, developmentRiskScore: 0.07, financialScore: 0.03 },
   },
   {
     id: "merchant_upside",
     label: "Merchant / Developer Upside",
-    desc: "High energy price + price volatility exposure for merchant tail value",
-    weights: { priceScore: 0.40, locationScore: 0.25, interconnectionScore: 0.15, curtailmentScore: 0.10, demandProximityScore: 0.05, financialScore: 0.05 },
+    desc: "High capture price + market revenue for merchant tail — capture price 35% · basis 20% · mkt revenue 18% · congestion 12% · curtailment 10% · interconnect 5%",
+    weights: { priceScore: 0.35, locationScore: 0.20, financialScore: 0.18, interconnectionScore: 0.12, curtailmentScore: 0.10, developmentRiskScore: 0.05 },
   },
 ] as const;
 
@@ -76,42 +76,56 @@ const DIMS = [
     label: "Curtailment",
     shortLabel: "Curt",
     color: "#f59e0b",
-    tooltip: "ERCOT: mapped to load zone by lat/lon (LZ_WEST/NORTH/SOUTH/HOUSTON) using real CDR 12301 neg-price % (fleet avg 6.42%) + asset-type exposure. Wind/solar in LZ_WEST score lowest (~65). CAISO/PJM: modeled.",
+    tooltip: "ERCOT: real neg_price_percent per hub/zone from ercot_node_stats DB (52 months). HB_PAN 21.9% → wind score ~60; LZ_WEST 7.1% → wind ~80; LZ_HOUSTON 3.5% → wind ~93. Asset-type multiplier applied (wind 1.3×, solar 1.25×, gas 0.45×). CAISO: real OASIS neg-pct. PJM: modeled.",
   },
   {
     key: "interconnectionScore" as const,
     label: "Congestion",
     shortLabel: "Cong",
     color: "#ef4444",
-    tooltip: "ERCOT: hub DA price basis vs HB_BUSAVG ($29.16/MWh) — Panhandle (HB_PAN $20.38, -30%) scores lowest; LZ_HOUSTON (HB_HOUSTON $35.42, +21.5%) scores highest. CAISO: zone DA basis vs reference ($33.19) + volatility penalty — NP15 avg 69, SP15/ZP26 avg 29-34. Real CDR + OASIS data.",
+    tooltip: "ERCOT: real avg DA price basis vs HB_BUSAVG ($29.11) + volatility penalty from DB. LZ_LCRA $35.15 (+21%) scores highest; HB_PAN $19.83 (-32%) scores lowest. CAISO: zone DA basis vs $33.25 + price vol penalty. Asset-type adjustments applied. Real CDR + OASIS data, 52 months.",
   },
   {
     key: "locationScore" as const,
     label: "Basis Risk",
     shortLabel: "Basis",
     color: "#8b5cf6",
-    tooltip: "Based on spread volatility (std dev). High volatility = unpredictable settlement basis = lower score.",
+    tooltip: "Real price volatility (std dev of monthly DA prices) from ercot_node_stats. LZ_WEST vol 14.02 → score ~60 (most volatile); HB_SOUTH vol 8.33 → score ~74 (most stable). Lower volatility = more predictable PPA settlement = higher score.",
   },
   {
     key: "priceScore" as const,
-    label: "Price",
-    shortLabel: "Price",
+    label: "Capture Price",
+    shortLabel: "Cap$",
     color: "#14b8a6",
-    tooltip: "Average DA LMP at the proxy node. Higher market prices support better PPA merchant tail value.",
+    tooltip: "Hub DA price × technology timing-capture ratio. Wind captures ~82% of hub avg (produces at night when prices are lower); solar ~103% (peaks during summer afternoon demand); storage ~118% (dispatches at peak). Score 50 = system-average capture price.",
   },
   {
     key: "demandProximityScore" as const,
     label: "Capacity",
-    shortLabel: "Cap",
+    shortLabel: "MW",
     color: "#3b82f6",
-    tooltip: "Log-scaled plant size score. Larger plants are more attractive for Walmart's ~500 MW procurement need.",
+    tooltip: "Log-scaled plant size score. Larger plants are more attractive for Walmart's ~500 MW procurement need. 2,000 MW → 93; 500 MW → 76; 100 MW → 58; 10 MW → 36.",
   },
   {
     key: "financialScore" as const,
-    label: "Asset Age",
-    shortLabel: "Age",
+    label: "Mkt Revenue",
+    shortLabel: "Rev",
     color: "#22c55e",
-    tooltip: "Commissioning year proxy for technology quality and remaining useful life. Newer = higher score.",
+    tooltip: "Annual energy market revenue = capacity × capacity factor × capture price × 8,760 h. Log-scaled 0–100. $200M+/yr → 95; $50M → 80; $10M → 62; $1M → 42. Reflects scale and market value of the asset.",
+  },
+  {
+    key: "developmentRiskScore" as const,
+    label: "Interconnect Risk",
+    shortLabel: "IQ",
+    color: "#f97316",
+    tooltip: "Total MW in interconnection queue for the same zone. Heavy queue backlog = longer study timelines, higher upgrade costs, more withdrawal risk. ERCOT LZ_CPS 18.5 GW → score 25; CAISO SP15 371 GW → score 25. Lower queue MW = higher score.",
+  },
+  {
+    key: "environmentalScore" as const,
+    label: "RECs / Yr",
+    shortLabel: "REC",
+    color: "#a855f7",
+    tooltip: "Annual Renewable Energy Credit value = MWh generated × REC market price. ERCOT Texas TRC ~$1.50/MWh; CAISO WREGIS ~$10–12/MWh; PJM varies ($3.50–$15/MWh). Log-scaled 0–100. Non-renewable assets (gas, nuclear, coal) score 12.",
   },
 ];
 
@@ -201,7 +215,7 @@ export default function Rankings() {
   const [searchTerm, setSearchTerm] = useState("");
   const [marketFilter, setMarketFilter] = useState<string | undefined>(searchParams.get("market") as any || undefined);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string | undefined>(searchParams.get("assetType") as any || undefined);
-  const [sortField, setSortField] = useState<"overallScore" | "objectiveScore" | "curtailmentScore" | "interconnectionScore" | "locationScore" | "priceScore" | "demandProximityScore" | "annualRecValueUsd">("overallScore");
+  const [sortField, setSortField] = useState<"overallScore" | "objectiveScore" | "curtailmentScore" | "interconnectionScore" | "locationScore" | "priceScore" | "demandProximityScore" | "financialScore" | "developmentRiskScore" | "environmentalScore" | "annualRecValueUsd">("overallScore");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [objective, setObjective] = useState<ObjectiveId>("risk_adjusted");
   const [addOpen, setAddOpen] = useState(false);
@@ -263,7 +277,7 @@ export default function Rankings() {
 
   const handleExportCsv = () => {
     if (!candidates) return;
-    const headers = ["Name", "Market", "Asset Type", "Capacity (MW)", "Overall", "Curtailment", "Congestion", "Basis Risk", "Price", "Capacity Score", "Asset Age", "State", "County", "COD", "REC Eligible", "Annual RECs (MWh)", "REC Price ($/MWh)", "Annual REC Value ($)", "20yr REC Value ($)", "REC Market"];
+    const headers = ["Name", "Market", "Asset Type", "Capacity (MW)", "Overall", "Curtailment", "Congestion", "Basis Risk", "Capture Price", "Capacity Score", "Mkt Revenue", "Interconnect Risk", "RECs/Yr Score", "State", "County", "COD", "REC Eligible", "Annual RECs (MWh)", "REC Price ($/MWh)", "Annual REC Value ($)", "20yr REC Value ($)", "REC Market"];
     const rows = candidates.map(c => [
       `"${c.name}"`, c.market, c.assetType, c.capacityMw,
       c.overallScore,
@@ -273,6 +287,8 @@ export default function Rankings() {
       (c as any).priceScore ?? "",
       (c as any).demandProximityScore ?? "",
       (c as any).financialScore ?? "",
+      (c as any).developmentRiskScore ?? "",
+      (c as any).environmentalScore ?? "",
       c.state ?? "", c.county ?? "",
       (c as any).commissioningYear ?? "",
       (c as any).recEligible ? "Yes" : "No",
@@ -349,7 +365,7 @@ export default function Rankings() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Candidate Rankings</h1>
             <p className="text-muted-foreground text-sm">
-              3,875 EIA 860 2024 operational plants — scored on congestion, curtailment, basis risk, price & capacity.
+              3,875 EIA 860 2024 operational plants — 8 real-data dimensions: curtailment, congestion, basis risk, capture price, market revenue, interconnect risk, RECs/yr, capacity.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -372,7 +388,7 @@ export default function Rankings() {
           <span>
             <span className="font-medium text-foreground">Scoring methodology: </span>
             {activeObjective.desc}.{" "}
-            ERCOT: each plant assigned to its nearest interconnection-queue node (Haversine, ≤200 km) → real DA prices. CAISO: queue-confirmed NP15/SP15 per plant. All real CDR + OASIS data, 28 months. PJM modeled.
+            ERCOT: real neg-price %, DA prices, and volatility from ercot_node_stats DB (52 months CDR). CAISO: real OASIS data. Queue depth by zone powers Interconnect Risk. Capture Price = hub DA × technology timing ratio. Mkt Revenue = MW × CF × capture price × 8,760h. RECs/Yr = annual MWh × market REC price.
           </span>
         </div>
 
