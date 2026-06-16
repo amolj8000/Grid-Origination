@@ -1,8 +1,21 @@
 import { Router } from "express";
 import { spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+
+// In dev: process.cwd() = artifacts/api-server/ → workspace root is ../../
+// In production: process.cwd() = workspace root (node started from there)
+function findWorkspaceRoot(): string {
+  const cwd = process.cwd();
+  if (fs.existsSync(path.join(cwd, "pnpm-workspace.yaml"))) return cwd;
+  const up2 = path.resolve(cwd, "../..");
+  if (fs.existsSync(path.join(up2, "pnpm-workspace.yaml"))) return up2;
+  return cwd;
+}
+
+const WORKSPACE_ROOT = findWorkspaceRoot();
 
 const router = Router();
 
@@ -37,7 +50,7 @@ let jobCounter = 0;
 
 function spawnScript(scriptName: string): string {
   const jobId = `job-${++jobCounter}-${Date.now()}`;
-  const wsRoot = path.resolve(process.cwd(), "../..");
+  const wsRoot = WORKSPACE_ROOT;
 
   const job: Job = {
     script: scriptName,
@@ -198,7 +211,7 @@ router.post("/admin/score-candidates", requireAdminKey, (req, res) => {
 // ── POST /api/admin/reseed-all ────────────────────────────────────────────────
 // Convenience: queue all steps in sequence (candidates → transmission → score)
 router.post("/admin/reseed-all", requireAdminKey, (req, res) => {
-  const wsRoot = path.resolve(process.cwd(), "../..");
+  const wsRoot = WORKSPACE_ROOT;
 
   const jobId = `job-${++jobCounter}-${Date.now()}`;
   const job: Job = {
