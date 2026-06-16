@@ -208,6 +208,39 @@ router.post("/admin/score-candidates", requireAdminKey, (req, res) => {
   });
 });
 
+// ── POST /api/admin/reseed-pjm ───────────────────────────────────────────────
+router.post("/admin/reseed-pjm", requireAdminKey, (req, res) => {
+  const jobId = spawnScript("seed-pjm");
+  res.status(202).json({
+    message: "PJM node stats seeding started in background",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Seeds PJM 8-hub/zone monthly DA/RT stats for 2022–2026.",
+  });
+});
+
+// ── POST /api/admin/reseed-ercot-nodes ───────────────────────────────────────
+router.post("/admin/reseed-ercot-nodes", requireAdminKey, (req, res) => {
+  const jobId = spawnScript("seed-ercot-real");
+  res.status(202).json({
+    message: "ERCOT node stats (real CDR) seeding started",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Downloads real CDR data for 15 ERCOT hub/zone nodes. Takes 5–10 min.",
+  });
+});
+
+// ── POST /api/admin/reseed-caiso-nodes ───────────────────────────────────────
+router.post("/admin/reseed-caiso-nodes", requireAdminKey, (req, res) => {
+  const jobId = spawnScript("seed-caiso-real");
+  res.status(202).json({
+    message: "CAISO node stats (real OASIS) seeding started",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Downloads real CAISO OASIS data for NP15/SP15/ZP26. Takes 3–5 min.",
+  });
+});
+
 // ── POST /api/admin/reseed-all ────────────────────────────────────────────────
 // Convenience: queue all steps in sequence (candidates → transmission → score)
 router.post("/admin/reseed-all", requireAdminKey, (req, res) => {

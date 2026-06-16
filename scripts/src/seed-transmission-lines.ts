@@ -7,29 +7,69 @@ const HIFLD_BASE =
   "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services" +
   "/Electric_Power_Transmission_Lines/FeatureServer/0/query";
 
-interface HifldFeature {
+interface GeoJsonFeature {
   properties: Record<string, unknown>;
   geometry: { coordinates: [number, number][] } | null;
 }
 
-interface HifldResponse {
-  features?: HifldFeature[];
+interface GeoJsonResponse {
+  features?: GeoJsonFeature[];
   exceededTransferLimit?: boolean;
   error?: { message: string };
 }
 
-async function fetchJson(url: string): Promise<HifldResponse> {
+// Bounding boxes [xmin, ymin, xmax, ymax] for each region
+// STATE_ field was removed from HIFLD — use spatial filter instead
+const REGIONS = [
+  {
+    label: "Texas (ERCOT)",
+    bbox: [-107, 25, -93, 37],
+    where: "VOLTAGE >= 115",
+    iso: "ERCOT",
+  },
+  {
+    label: "California (CAISO)",
+    bbox: [-124, 32, -114, 42],
+    where: "VOLTAGE >= 115",
+    iso: "CAISO",
+  },
+  {
+    label: "PJM Northeast",
+    bbox: [-82, 36, -74, 44],
+    where: "VOLTAGE >= 230",
+    iso: "PJM",
+  },
+  {
+    label: "PJM Midwest",
+    bbox: [-92, 34, -80, 48],
+    where: "VOLTAGE >= 230",
+    iso: "PJM",
+  },
+  {
+    label: "High voltage national",
+    bbox: null,
+    where: "VOLTAGE >= 500",
+    iso: "NATIONAL",
+  },
+];
+
+async function fetchJson(url: string): Promise<GeoJsonResponse> {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith("https") ? https : http;
-    lib.get(url, { headers: { "User-Agent": "GridOriginationPlatform/1.0" } }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (c: Buffer) => chunks.push(c));
-      res.on("end", () => {
-        try { resolve(JSON.parse(Buffer.concat(chunks).toString()) as HifldResponse); }
-        catch (e) { reject(e); }
-      });
-      res.on("error", reject);
-    }).on("error", reject);
+    lib
+      .get(url, { headers: { "User-Agent": "GridOriginationPlatform/1.0" } }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(Buffer.concat(chunks).toString()) as GeoJsonResponse);
+          } catch (e) {
+            reject(e);
+          }
+        });
+        res.on("error", reject);
+      })
+      .on("error", reject);
   });
 }
 
@@ -42,31 +82,30 @@ function voltClass(kv: number): string {
   return "UNDER 100 KV";
 }
 
-// Regions: fetch in chunks to stay within HIFLD's 2000-record limit per page
-const REGIONS = [
-  { label: "Texas (ERCOT)", where: "STATE_ = 'TX' AND VOLTAGE >= 115", iso: "ERCOT" },
-  { label: "California (CAISO)", where: "STATE_ = 'CA' AND VOLTAGE >= 115", iso: "CAISO" },
-  { label: "PJM Northeast", where: "STATE_ IN ('PA','NJ','MD','DE','VA','WV','DC') AND VOLTAGE >= 230", iso: "PJM" },
-  { label: "PJM Midwest", where: "STATE_ IN ('OH','IN','MI','IL','NC','KY') AND VOLTAGE >= 230", iso: "PJM" },
-  { label: "High voltage national", where: "VOLTAGE >= 500", iso: "NATIONAL" },
-];
-
-async function fetchRegion(region: typeof REGIONS[0]): Promise<HifldFeature[]> {
-  const all: HifldFeature[] = [];
+async function fetchRegion(region: (typeof REGIONS)[0]): Promise<GeoJsonFeature[]> {
+  const all: GeoJsonFeature[] = [];
   let offset = 0;
   let more = true;
 
   while (more) {
-    const params = new URLSearchParams({
+    const params: Record<string, string> = {
       where: region.where,
-      outFields: "OBJECTID,TYPE,STATUS,VOLTAGE,VOLT_CLASS,OWNER,SUB_1,SUB_2,SHAPE_LEN",
+      outFields: "OBJECTID,TYPE,STATUS,VOLTAGE,VOLT_CLASS,OWNER,SUB_1,SUB_2,SHAPE__Len",
       outSR: "4326",
-      geometryType: "esriGeometryPolyline",
       f: "geojson",
       resultOffset: String(offset),
       resultRecordCount: "2000",
-    });
-    const url = `${HIFLD_BASE}?${params}`;
+    };
+
+    if (region.bbox) {
+      const [xmin, ymin, xmax, ymax] = region.bbox;
+      params.geometry = `${xmin},${ymin},${xmax},${ymax}`;
+      params.geometryType = "esriGeometryEnvelope";
+      params.inSR = "4326";
+      params.spatialRel = "esriSpatialRelIntersects";
+    }
+
+    const url = `${HIFLD_BASE}?${new URLSearchParams(params)}`;
     const data = await fetchJson(url);
 
     if (data.error) {
@@ -80,7 +119,7 @@ async function fetchRegion(region: typeof REGIONS[0]): Promise<HifldFeature[]> {
 
     more = !!data.exceededTransferLimit && features.length > 0;
     offset += 2000;
-    if (more) await new Promise(r => setTimeout(r, 400));
+    if (more) await new Promise((r) => setTimeout(r, 400));
   }
 
   console.log(`\r  ${region.label}: ${all.length} lines fetched       `);
@@ -104,11 +143,18 @@ async function seed() {
       continue;
     }
 
-    // Build rows — skip features with no/short geometry
     const rows: Array<{
-      hifld_id: string; line_type: string; status: string; voltage_kv: number | null;
-      volt_class: string; owner: string; sub_from: string; sub_to: string;
-      iso: string; line_length_km: number | null; coordinates: string;
+      hifld_id: string;
+      line_type: string;
+      status: string;
+      voltage_kv: number | null;
+      volt_class: string;
+      owner: string;
+      sub_from: string;
+      sub_to: string;
+      iso: string;
+      line_length_km: number | null;
+      coordinates: string;
     }> = [];
 
     for (const f of features) {
@@ -119,7 +165,7 @@ async function seed() {
       seenIds.add(uniqueId);
 
       const kv = Number(f.properties["VOLTAGE"]) || null;
-      const shapeLen = Number(f.properties["SHAPE_LEN"]) || null;
+      const shapeLen = Number(f.properties["SHAPE__Len"]) || null;
       rows.push({
         hifld_id: uniqueId,
         line_type: String(f.properties["TYPE"] ?? ""),
@@ -135,9 +181,11 @@ async function seed() {
       });
     }
 
-    if (rows.length === 0) { console.log(`  All ${features.length} features skipped (no valid geometry)`); continue; }
+    if (rows.length === 0) {
+      console.log(`  All ${features.length} features skipped (no valid geometry)`);
+      continue;
+    }
 
-    // Insert in batches of 500
     const BATCH = 500;
     for (let i = 0; i < rows.length; i += BATCH) {
       const batch = rows.slice(i, i + BATCH);
@@ -166,4 +214,7 @@ async function seed() {
   console.log(`\n\nDone. Total transmission lines inserted: ${totalInserted}`);
 }
 
-seed().catch(err => { console.error(err); process.exit(1); });
+seed().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

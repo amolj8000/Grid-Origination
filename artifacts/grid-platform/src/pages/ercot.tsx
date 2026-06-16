@@ -35,7 +35,7 @@ const NODES = ["HB_HOUSTON", "HB_NORTH", "HB_SOUTH", "HB_WEST", "LZ_HOUSTON", "L
 
 export default function ErcotHistorical() {
   const [node, setNode] = useState<string>("HB_HOUSTON");
-  const [year, setYear] = useState<number>(2025);
+  const [year, setYear] = useState<number>(2024);
   const [compareYear, setCompareYear] = useState<number>(2022);
   const [showCompare, setShowCompare] = useState(false);
 
