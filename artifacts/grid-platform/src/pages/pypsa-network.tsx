@@ -77,8 +77,8 @@ interface OPFResult {
 }
 
 export default function PypsaNetwork() {
-  const [windCf,  setWindCf]  = useState(35);
-  const [solarCf, setSolarCf] = useState(22);
+  const [windCf,  setWindCf]  = useState(55);  // default: high-wind scenario shows CREZ congestion
+  const [solarCf, setSolarCf] = useState(25);
   const [gasPrice, setGasPrice] = useState(350);  // cents → divide by 100
   const [loadMw,  setLoadMw]  = useState(55000);
   const [dirty, setDirty] = useState(false);

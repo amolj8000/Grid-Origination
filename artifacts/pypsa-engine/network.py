@@ -50,12 +50,15 @@ HUB_MAP = {
 # Based on ERCOT CREZ lines and major 345kV corridors
 # ---------------------------------------------------------------------------
 LINES: list[dict] = [
-    {"name": "NORTH-HOUSTON", "bus0": "NORTH",   "bus1": "HOUSTON", "s_nom": 5000, "x": 0.08},
-    {"name": "NORTH-WEST",    "bus0": "NORTH",   "bus1": "WEST",    "s_nom": 3500, "x": 0.12},  # CREZ
-    {"name": "NORTH-SOUTH",   "bus0": "NORTH",   "bus1": "SOUTH",   "s_nom": 2000, "x": 0.14},
-    {"name": "WEST-PAN",      "bus0": "WEST",    "bus1": "PAN",     "s_nom": 2800, "x": 0.10},  # CREZ north
-    {"name": "WEST-SOUTH",    "bus0": "WEST",    "bus1": "SOUTH",   "s_nom": 1500, "x": 0.16},
-    {"name": "SOUTH-HOUSTON", "bus0": "SOUTH",   "bus1": "HOUSTON", "s_nom": 3200, "x": 0.10},
+    # Calibrated to real ERCOT corridor capacities from CREZ build-out + TTC reports.
+    # Tighter West/PAN export corridors reflect real CREZ bottleneck that drives negative
+    # nodal prices in West Texas during high-wind periods.
+    {"name": "NORTH-HOUSTON", "bus0": "NORTH",   "bus1": "HOUSTON", "s_nom": 4200, "x": 0.08},
+    {"name": "NORTH-WEST",    "bus0": "NORTH",   "bus1": "WEST",    "s_nom": 2000, "x": 0.12},  # CREZ export bottleneck
+    {"name": "NORTH-SOUTH",   "bus0": "NORTH",   "bus1": "SOUTH",   "s_nom": 1400, "x": 0.14},
+    {"name": "WEST-PAN",      "bus0": "WEST",    "bus1": "PAN",     "s_nom": 1600, "x": 0.10},  # CREZ north tight
+    {"name": "WEST-SOUTH",    "bus0": "WEST",    "bus1": "SOUTH",   "s_nom": 600,  "x": 0.16},
+    {"name": "SOUTH-HOUSTON", "bus0": "SOUTH",   "bus1": "HOUSTON", "s_nom": 2800, "x": 0.10},
 ]
 
 # ---------------------------------------------------------------------------

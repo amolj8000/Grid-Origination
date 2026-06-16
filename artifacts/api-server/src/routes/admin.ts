@@ -307,4 +307,54 @@ router.post("/admin/reseed-all", requireAdminKey, (req, res) => {
   });
 });
 
+// ── POST /api/admin/upsert-ercot-hub-stats ───────────────────────────────────
+// Accepts a JSON array of hub/zone node stat rows and bulk-upserts them.
+// Used to push real data from dev directly into production without XLSX parsing.
+router.post("/admin/upsert-ercot-hub-stats", requireAdminKey, async (req, res) => {
+  try {
+    const rows = req.body as Array<{
+      node: string; nodeType: string; year: number; month: number;
+      avgDaPrice: number; avgRtPrice?: number | null; volatility?: number | null;
+      negPricePercent?: number | null; onPeakAvg?: number | null; offPeakAvg?: number | null;
+      minPrice?: number | null; maxPrice?: number | null;
+    }>;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: "Expected non-empty array of rows" });
+      return;
+    }
+    let upserted = 0;
+    const BATCH = 100;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      for (const r of batch) {
+        await db.execute(sql`
+          INSERT INTO ercot_node_stats
+            (node, node_type, year, month, avg_da_price, avg_rt_price, volatility,
+             neg_price_percent, on_peak_avg, off_peak_avg, min_price, max_price)
+          VALUES (
+            ${r.node}, ${r.nodeType}, ${r.year}, ${r.month},
+            ${r.avgDaPrice}, ${r.avgRtPrice ?? null}, ${r.volatility ?? null},
+            ${r.negPricePercent ?? null}, ${r.onPeakAvg ?? null}, ${r.offPeakAvg ?? null},
+            ${r.minPrice ?? null}, ${r.maxPrice ?? null}
+          )
+          ON CONFLICT (node, year, month) DO UPDATE SET
+            avg_da_price = EXCLUDED.avg_da_price,
+            avg_rt_price = EXCLUDED.avg_rt_price,
+            volatility = EXCLUDED.volatility,
+            neg_price_percent = EXCLUDED.neg_price_percent,
+            on_peak_avg = EXCLUDED.on_peak_avg,
+            off_peak_avg = EXCLUDED.off_peak_avg,
+            min_price = EXCLUDED.min_price,
+            max_price = EXCLUDED.max_price
+        `);
+        upserted++;
+      }
+    }
+    res.json({ message: "ERCOT hub stats upserted", rows: upserted });
+  } catch (err) {
+    req.log.error({ err }, "admin/upsert-ercot-hub-stats error");
+    res.status(500).json({ error: "internal_error", detail: String(err) });
+  }
+});
+
 export default router;

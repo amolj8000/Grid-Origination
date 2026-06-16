@@ -33,7 +33,7 @@ const TOOLTIP_STYLE = {
 
 export default function CaisoHistorical() {
   const [node, setNode] = useState<string>("NP15");
-  const [year, setYear] = useState<number>(2024);
+  const [year, setYear] = useState<number>(2025);
   const [compareYear, setCompareYear] = useState<number>(2022);
   const [showCompare, setShowCompare] = useState(false);
 

@@ -83,8 +83,11 @@ async def startup_event():
     global _opf_cache
     try:
         from network import run_opf as _run_opf
-        logger.info("Pre-computing default OPF on startup...")
-        _opf_cache = _run_opf()
+        # Default: high-wind scenario (55% CF) that produces realistic CREZ congestion.
+        # West Texas wind exceeds CREZ corridor capacity → West/PAN LMPs drop,
+        # North/Houston LMPs rise with congestion premium — mimics real ERCOT behaviour.
+        logger.info("Pre-computing default OPF on startup (high-wind scenario)...")
+        _opf_cache = _run_opf(wind_cf=0.55, solar_cf=0.25)
         logger.info("OPF ready — avg LMP $%.2f, spread $%.2f",
                     _opf_cache.get("avg_lmp", 0), _opf_cache.get("lmp_spread", 0))
     except Exception as e:

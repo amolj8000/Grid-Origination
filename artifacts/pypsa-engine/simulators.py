@@ -264,8 +264,8 @@ def _run_single_opf(
 
 def run_tx_relief(
     system_load_mw: float = 55000.0,
-    wind_cf: float = 0.35,
-    solar_cf: float = 0.22,
+    wind_cf: float = 0.55,   # high-wind default to show meaningful CREZ congestion
+    solar_cf: float = 0.25,
     gas_price_mmbtu: float = 3.50,
     upgrade_line: str = "NORTH-WEST",
     upgrade_pct: float = 50.0,

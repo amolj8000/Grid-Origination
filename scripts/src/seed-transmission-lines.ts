@@ -53,7 +53,7 @@ const REGIONS = [
   },
 ];
 
-async function fetchJson(url: string): Promise<GeoJsonResponse> {
+async function fetchJsonOnce(url: string): Promise<GeoJsonResponse> {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith("https") ? https : http;
     lib
@@ -71,6 +71,20 @@ async function fetchJson(url: string): Promise<GeoJsonResponse> {
       })
       .on("error", reject);
   });
+}
+
+async function fetchJson(url: string, retries = 4): Promise<GeoJsonResponse> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fetchJsonOnce(url);
+    } catch (err) {
+      if (attempt === retries) throw err;
+      const wait = attempt * 3000;
+      process.stderr.write(`  [retry ${attempt}/${retries - 1} in ${wait / 1000}s: ${(err as NodeJS.ErrnoException).code ?? err}]\n`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw new Error("unreachable");
 }
 
 function voltClass(kv: number): string {
