@@ -322,6 +322,20 @@ def admin_seed_status():
     return dict(seed_status)
 
 
+@app.post("/admin/seed-reset")
+def admin_seed_reset(key: str = ""):
+    """Force-clear the _seeding lock (use if a seed job is stuck/hung)."""
+    global _seeding
+    _require_admin_key(key)
+    from seeder import seed_status
+    was_running = _seeding or seed_status.get("running", False)
+    _seeding = False
+    seed_status["running"] = False
+    seed_status["phase"] = "reset"
+    seed_status["completed"] = False
+    return {"reset": True, "was_running": was_running}
+
+
 @app.post("/admin/seed")
 async def admin_seed(
     background_tasks: BackgroundTasks,
