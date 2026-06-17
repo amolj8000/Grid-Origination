@@ -81,7 +81,7 @@ export default function PypsaML() {
             XGBoost Congestion Model
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Gradient boosted trees trained on 1,123 ERCOT nodes · Monthly features · Basis magnitude regression + congestion classification
+            Gradient boosted trees trained on ERCOT hourly hub/zone data · Monthly features · Basis magnitude regression + congestion classification
           </p>
         </div>
         <Badge variant="outline" className="border-purple-500/40 text-purple-400 text-xs">ML v1</Badge>

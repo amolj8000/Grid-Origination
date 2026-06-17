@@ -87,7 +87,7 @@ export default function CIHeatmap() {
             <h1 className="text-2xl font-bold">Congestion Heat Map</h1>
           </div>
           <p className="text-muted-foreground text-sm">
-            All 1,123 ERCOT nodes ranked by composite congestion risk — basis magnitude, volatility, event frequency, negative pricing
+            {raw ? raw.length.toLocaleString() : "…"} ERCOT nodes ranked by composite congestion risk — basis magnitude, volatility, event frequency, negative pricing
           </p>
         </div>
 

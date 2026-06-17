@@ -57,7 +57,7 @@ const SECTIONS = [
     Risk Score (0–100): Composite metric weighted 40% by average absolute basis, 25% by basis standard deviation, 25% by 
     congestion frequency, 10% by negative-price exposure. Normalized to 0–100 for comparability across node types.
 
-    Node ranking: All 1,123 nodes ranked by risk score in the Heat Map, enabling quick identification of where congestion 
+    Node ranking: All nodes ranked by risk score in the Heat Map, enabling quick identification of where congestion 
     concentrates in the ERCOT footprint.`,
   },
   {

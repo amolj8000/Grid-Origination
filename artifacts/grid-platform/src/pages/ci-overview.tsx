@@ -54,7 +54,9 @@ export default function CIOverview() {
           <Badge variant="outline" className="text-xs border-emerald-500/50 text-emerald-400 ml-1">Phase 1</Badge>
         </div>
         <p className="text-muted-foreground text-sm">
-          Portfolio-grade congestion and basis risk analytics — 1,123 nodes · Jan 2024–Apr 2026 · all real ERCOT CDR + API data
+          Portfolio-grade congestion and basis risk analytics{data
+            ? ` — ${(data.resourceNodes + data.hubZoneNodes).toLocaleString()} nodes · ${data.minPeriod}–${data.maxPeriod} · all real ERCOT CDR + API data`
+            : ""}
         </p>
       </div>
 
