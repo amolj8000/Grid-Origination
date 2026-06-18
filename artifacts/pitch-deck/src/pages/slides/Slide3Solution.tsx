@@ -4,22 +4,22 @@ export default function Slide3Solution() {
       number: "01",
       color: "#14b8a6",
       title: "PPA & Offtake Origination",
-      body: "Screen 3,875 EIA 860 wind, solar, and storage projects. Score on 8 risk dimensions. Surface the best counterparties — NextEra, Invenergy, EDP, Avangrid — before the RFP launches.",
-      metrics: ["250–750 MW target size", "15–20 yr fixed-price terms", "$35–55/MWh vs. $60–90 spot"],
+      body: "Your March 2024 bundle added 842 MW: 162 MWac EDPR NA Texas solar (15-yr), NextEra in AR/LA/MS, Invenergy. This platform finds the next tranche — screen by ISO, congestion profile, and sponsor quality before the RFP drops.",
+      metrics: ["$30–45/MWh solar · $25–40/MWh wind", "15-yr term (EDPR NA TX benchmark)", "NextEra · Invenergy · EDPR · Avangrid"],
     },
     {
       number: "02",
       color: "#f59e0b",
       title: "Tolling Agreements",
-      body: "Identify underutilized gas-fired capacity in ERCOT and PJM. Tolling lets Walmart dispatch generation when spark spreads are favorable and pay a fixed capacity fee — no fuel price exposure.",
-      metrics: ["Dispatch optionality retained", "Peak demand hedge", "Gas spark spread analytics"],
+      body: "Lock in dispatchable capacity at a fixed monthly fee — no fuel price exposure. When ERCOT scarcity prices spike (as they did in Feb 2021 and winter 2024), Walmart dispatches the tolled unit and captures the spread.",
+      metrics: ["ERCOT scarcity: $9,000/MWh cap events", "Fixed capacity fee · variable fuel cost", "Gas spark spread analytics by node"],
     },
     {
       number: "03",
       color: "#8b5cf6",
       title: "Supercenter Load Hedging + EV",
-      body: "Map Walmart's ~4,700 store locations to ERCOT/CAISO settlement nodes. Quantify basis risk between PPA generation nodes and retail load points. Size on-site storage for EV charging hubs.",
-      metrics: ["Node-level basis per store", "500–1,000 MW EV load coming", "On-site 1–5 MW storage sizing"],
+      body: "Walmart's own-branded EV network launched 2025 — 56 stations, 350 stalls live, 15 in Texas. Each fast-charge hub adds 350–500 kW of new ERCOT load. Platform sizes storage co-location to offset demand charges and earn ancillary revenue.",
+      metrics: ["56 stations / 350 stalls · 15 in ERCOT", "350–500 kW DC per station (ABB A400)", "On-site storage → ORDC ancillary upside"],
     },
   ];
 
@@ -44,7 +44,6 @@ export default function Slide3Solution() {
         </p>
       </div>
 
-      {/* Three columns — use absolute positioning with tight bottom */}
       <div className="absolute top-[20vh] left-[8vw] right-[8vw] bottom-[10vh] flex gap-[2.5vw]">
         {levers.map((l) => (
           <div
@@ -58,7 +57,7 @@ export default function Slide3Solution() {
             <h3 className="font-display font-black mt-[0.5vh] leading-tight shrink-0" style={{ fontSize: "2.8vw", color: "#f1f5f9" }}>
               {l.title}
             </h3>
-            <p className="font-body mt-[1.5vh] leading-relaxed flex-1 overflow-hidden" style={{ fontSize: "2vw", color: "#94a3b8" }}>
+            <p className="font-body mt-[1.5vh] leading-relaxed flex-1 overflow-hidden" style={{ fontSize: "1.9vw", color: "#94a3b8" }}>
               {l.body}
             </p>
             <div className="flex flex-col gap-[0.7vh] mt-[2vh] shrink-0">
@@ -69,7 +68,7 @@ export default function Slide3Solution() {
                   style={{ background: `${l.color}12` }}
                 >
                   <div className="w-[0.5vw] h-[0.5vw] rounded-full shrink-0" style={{ background: l.color }} />
-                  <span className="font-body font-medium" style={{ fontSize: "1.8vw", color: l.color }}>{m}</span>
+                  <span className="font-body font-medium" style={{ fontSize: "1.75vw", color: l.color }}>{m}</span>
                 </div>
               ))}
             </div>

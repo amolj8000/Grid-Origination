@@ -11,7 +11,6 @@ export default function Slide7LiveDemo() {
           backgroundSize: "6vw 6vw",
         }}
       />
-      {/* Teal glow bottom-left */}
       <div
         className="absolute bottom-0 left-0 w-[50vw] h-[50vh] opacity-[0.10]"
         style={{ background: "radial-gradient(ellipse at 0% 100%, #14b8a6, transparent 70%)" }}
@@ -26,49 +25,51 @@ export default function Slide7LiveDemo() {
         </p>
       </div>
 
-      {/* Split layout */}
       <div className="absolute left-[8vw] right-[3vw] top-[22vh] bottom-[10vh] flex gap-[4vw] items-stretch">
 
-        {/* Left: CTA content */}
+        {/* Left: CTA */}
         <div className="w-[34vw] flex flex-col justify-between shrink-0">
           <div>
             <h2
               className="font-display font-black tracking-tight leading-[1.0]"
-              style={{ fontSize: "5vw", color: "#f1f5f9", textWrap: "balance" }}
+              style={{ fontSize: "4.8vw", color: "#f1f5f9", textWrap: "balance" }}
             >
-              3,875 projects ranked.{" "}
-              <span style={{ color: "#14b8a6" }}>Top 50 ready for outreach.</span>
+              2+ GW contracted.{" "}
+              <span style={{ color: "#14b8a6" }}>10 GW goal by 2030.</span>
             </h2>
+            <p className="font-display font-black mt-[1vh]" style={{ fontSize: "3.2vw", color: "#94a3b8" }}>
+              The next tranche starts here.
+            </p>
             <div className="mt-[2vh] h-[0.4vh] w-[10vw] bg-[#14b8a6] rounded-full" />
-            <p className="font-body font-medium mt-[2.5vh] leading-relaxed" style={{ fontSize: "2.3vw", color: "#94a3b8" }}>
-              The platform is live. Ask the Q&A Copilot anything — or open Rankings and filter by ISO, size, and risk score to generate the first outreach list in under 5 minutes.
+            <p className="font-body font-medium mt-[2.5vh] leading-relaxed" style={{ fontSize: "2.1vw", color: "#94a3b8" }}>
+              3,875 projects ranked across ERCOT, CAISO, and PJM. Filter by node, size, sponsor quality, and VPPA settlement risk. Export the shortlist to your deal team in minutes.
             </p>
           </div>
 
           {/* Workflow callouts */}
           <div className="flex flex-col gap-[2vh]">
             <div className="h-[1px] w-full bg-gradient-to-r from-[#14b8a6]/40 to-transparent" />
-            <div className="flex flex-col gap-[1.8vh]">
+            <div className="flex flex-col gap-[1.6vh]">
               {[
                 {
                   color: "#14b8a6",
                   title: "PPA / Tolling Origination",
-                  sub: "Screen → Score → Export CSV → Deal team",
+                  sub: "Filter → Score → Export CSV → Deal team outreach",
                 },
                 {
                   color: "#f59e0b",
-                  title: "Basis Risk Analysis",
-                  sub: "Select PPA node · Map to Walmart store · See 28-month spread",
+                  title: "VPPA Settlement Risk",
+                  sub: '"Show me ERCOT solar nodes where 2023 settlements ran negative"',
                 },
                 {
                   color: "#8b5cf6",
-                  title: "Q&A Copilot",
-                  sub: '"Which ERCOT wind projects have lowest congestion risk?"',
+                  title: "EV Charging Load Model",
+                  sub: '"Size storage co-location for our 15 Texas charging stations"',
                 },
               ].map((w) => (
                 <div key={w.title}>
-                  <p className="font-display font-black" style={{ fontSize: "2.6vw", color: w.color }}>{w.title}</p>
-                  <p className="font-body" style={{ fontSize: "1.9vw", color: "#94a3b8" }}>{w.sub}</p>
+                  <p className="font-display font-black" style={{ fontSize: "2.4vw", color: w.color }}>{w.title}</p>
+                  <p className="font-body" style={{ fontSize: "1.85vw", color: "#94a3b8" }}>{w.sub}</p>
                 </div>
               ))}
             </div>
