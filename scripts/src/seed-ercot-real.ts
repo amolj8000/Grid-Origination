@@ -24,12 +24,12 @@ const CDR = "https://www.ercot.com/misdownload/servlets/mirDownload?mimic_duns=0
 const RTM_IDS: Record<number, string> = {
   2024: "1065471230",
   2025: "1177737535",
-  2026: "1220061372",
+  2026: "1238507929",
 };
 const DAM_IDS: Record<number, string> = {
   2024: "1065468714",
   2025: "1177667469",
-  2026: "1219858972",
+  2026: "1238506057",
 };
 
 function downloadBuffer(url: string, redirects = 0): Promise<Buffer> {

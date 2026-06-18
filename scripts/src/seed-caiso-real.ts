@@ -31,7 +31,7 @@ const YEARS_MONTHS: Array<{ year: number; month: number }> = [];
 for (const year of [2024, 2025]) {
   for (let m = 1; m <= 12; m++) YEARS_MONTHS.push({ year, month: m });
 }
-for (let m = 1; m <= 4; m++) YEARS_MONTHS.push({ year: 2026, month: m });
+for (let m = 1; m <= 5; m++) YEARS_MONTHS.push({ year: 2026, month: m });
 
 function utcOffset(month: number): string {
   return month >= 3 && month <= 10 ? "-0700" : "-0800";

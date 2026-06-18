@@ -27,12 +27,12 @@ const CDR = "https://www.ercot.com/misdownload/servlets/mirDownload?mimic_duns=0
 const RTM_IDS: Record<number, string> = {
   2024: "1065471230",
   2025: "1177737535",
-  2026: "1220061372",
+  2026: "1238507929",
 };
 const DAM_IDS: Record<number, string> = {
   2024: "1065468714",
   2025: "1177667469",
-  2026: "1219858972",
+  2026: "1238506057",
 };
 
 const HUB_ZONE_NODES = new Set([
@@ -176,7 +176,7 @@ async function processYear(year: number, map: Map<HourKey, HourAgg>) {
     const cachePath = await getXlsxPath(year, type, ids);
     console.log(`  [${year}] Parsing ${type} sheet by sheet...`);
     for (const sn of MONTHS) {
-      const wb = XLSX.readFile(cachePath, { sheets: [sn] });
+      const wb = XLSX.read(fs.readFileSync(cachePath), { type: "buffer" });
       if (!wb.Sheets[sn]) continue;
       if (type === "RTM") parseRtmSheet(wb.Sheets[sn], map);
       else parseDamSheet(wb.Sheets[sn], map);

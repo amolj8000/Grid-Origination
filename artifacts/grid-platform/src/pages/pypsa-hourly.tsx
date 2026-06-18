@@ -100,7 +100,7 @@ export default function PypsaHourly() {
             Hourly Price Data
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Real DA + RT hourly price profiles for ERCOT hub/zone nodes · 263,130 rows from CDR 13060/13061
+            Real DA + RT hourly price profiles for ERCOT hub/zone nodes · 317,475 rows from CDR 13060/13061 · Jan 2024–May 2026
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -285,7 +285,7 @@ export default function PypsaHourly() {
         <CardContent className="pt-3 pb-3">
           <p className="text-xs text-muted-foreground">
             <span className="text-teal-400 font-medium">Data source:</span> ERCOT CDR Report 13061 (RTM — 15-min intervals averaged to hourly) and CDR Report 13060 (DAM — hourly).
-            All 15 hub/zone nodes · 2024–2025 · 263,130 rows. Parsed via Python multiprocessing XML extractor from ERCOT annual XLSX bundles.
+            All 15 hub/zone nodes · Jan 2024–May 2026 · 317,475 rows (263,130 from 2024–2025 + 54,345 from Jan–May 2026). Parsed via Python multiprocessing XML extractor from ERCOT annual XLSX bundles.
           </p>
         </CardContent>
       </Card>
