@@ -28,7 +28,7 @@ Analyze the interconnection queue across all three ISOs to find regions where a 
 |---------|-------------|
 | **EIA 860 Fleet** | 3,875 operable generators >1 MW — real 2024 data, ISO-mapped via BA codes |
 | **Interconnection Queue** | 3,493 queue projects tracked across ERCOT, CAISO, and PJM |
-| **PyPSA OPF Engine** | Optimal power flow simulation; LMP spread and congestion heatmaps |
+| **PyPSA OPF Engine** | 340-bus real ERCOT network (CDR 10008) · DC OPF via HiGHS · nodal LMPs + CREZ congestion heatmap |
 | **Congestion Intelligence** | 7-screen analysis suite: overview, heat map, node detail, basis analyzer, backtest, data quality, methodology |
 | **Nodal Analysis** | Settlement point spread calculator with real 28-month DA/RT price history |
 | **Real Price Data** | ERCOT CDR Reports 13060/13061 · CAISO OASIS PRC_LMP · 1,108 resource nodes |
