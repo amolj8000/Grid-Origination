@@ -5,6 +5,12 @@ import { sql } from "drizzle-orm";
 
 const router = Router();
 
+const TABLE_DISPLAY_LIMIT = 100;
+
+function isTimeSeries(columns: string[]): boolean {
+  return columns.includes("year") && columns.includes("month");
+}
+
 async function runSafeQuery(query: string): Promise<{ columns: string[]; rows: Record<string, unknown>[] }> {
   const trimmed = query.trim();
   if (!/^select\b/i.test(trimmed)) throw new Error("Only SELECT queries are permitted.");
@@ -213,6 +219,25 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
               sendEvent({ type: "sql_query", rationale });
               const result = await runSafeQuery(args.query);
               sendEvent({ type: "sql_done", rows: result.rows.length });
+
+              const displayRows = result.rows.slice(0, TABLE_DISPLAY_LIMIT);
+
+              sendEvent({
+                type: "table",
+                columns: result.columns,
+                rows: displayRows,
+                totalRows: result.rows.length,
+              });
+
+              if (result.columns.length >= 2 && isTimeSeries(result.columns)) {
+                sendEvent({
+                  type: "chart",
+                  chartType: "timeseries",
+                  columns: result.columns,
+                  rows: displayRows,
+                });
+              }
+
               toolResult = JSON.stringify({ rows: result.rows, count: result.rows.length });
             } catch (err) {
               toolResult = JSON.stringify({ error: String(err) });

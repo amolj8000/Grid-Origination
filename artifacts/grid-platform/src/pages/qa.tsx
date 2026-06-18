@@ -3,13 +3,200 @@ import { CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, User, Send, BrainCircuit, Zap, Loader2, Database, AlertCircle } from "lucide-react";
+import { Bot, User, Send, BrainCircuit, Zap, Loader2, Database, TableIcon, BarChart2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+type TableBlock = {
+  type: "table";
+  columns: string[];
+  rows: Record<string, unknown>[];
+  totalRows: number;
+};
+
+type ChartBlock = {
+  type: "chart";
+  chartType: "timeseries" | "bar";
+  columns: string[];
+  rows: Record<string, unknown>[];
+};
+
+type Block = TableBlock | ChartBlock;
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   sqlQueries?: string[];
+  blocks?: Block[];
+}
+
+const CHART_COLORS = ["#14b8a6", "#f59e0b", "#8b5cf6", "#22c55e", "#ef4444", "#3b82f6", "#f97316"];
+
+const NON_METRIC_COLS = new Set([
+  "year", "month", "node", "market", "asset_type", "fuel_type",
+  "name", "status", "id", "data_points",
+]);
+
+function getNumericCols(columns: string[]): string[] {
+  return columns.filter(c => !NON_METRIC_COLS.has(c));
+}
+
+function buildTimeSeriesData(columns: string[], rows: Record<string, unknown>[]) {
+  return rows.map(row => {
+    const period = `${row.year}-${String(row.month).padStart(2, "0")}`;
+    const entry: Record<string, unknown> = { period };
+    for (const col of columns) {
+      if (col !== "year" && col !== "month") {
+        const v = row[col];
+        entry[col] = v !== null && v !== undefined ? Number(v) : null;
+      }
+    }
+    return entry;
+  });
+}
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
+  }
+  const n = Number(value);
+  if (!isNaN(n) && value !== "" && value !== true && value !== false) {
+    return Number.isInteger(n) ? n.toLocaleString() : n.toFixed(2);
+  }
+  return String(value);
+}
+
+function formatColHeader(col: string): string {
+  return col.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function DataTable({ block }: { block: TableBlock }) {
+  const { columns, rows, totalRows } = block;
+  const truncated = totalRows > rows.length;
+
+  return (
+    <div className="mt-3 rounded-lg border border-border overflow-hidden bg-card/80">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card/50">
+        <TableIcon className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs font-medium text-muted-foreground">
+          {rows.length} rows{truncated ? ` (of ${totalRows})` : ""} · {columns.length} columns
+        </span>
+      </div>
+      <div className="overflow-x-auto max-h-72 overflow-y-auto">
+        <Table>
+          <TableHeader className="sticky top-0 bg-card z-10">
+            <TableRow>
+              {columns.map(col => (
+                <TableHead key={col} className="text-xs py-2 whitespace-nowrap font-semibold">
+                  {formatColHeader(col)}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, i) => (
+              <TableRow key={i} className="hover:bg-primary/5">
+                {columns.map(col => (
+                  <TableCell key={col} className="text-xs py-1.5 whitespace-nowrap tabular-nums">
+                    {formatCellValue(row[col])}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function DataChart({ block }: { block: ChartBlock }) {
+  const { columns, rows } = block;
+  const numericCols = getNumericCols(columns);
+
+  if (numericCols.length === 0 || rows.length === 0) return null;
+
+  if (block.chartType === "timeseries") {
+    const data = buildTimeSeriesData(columns, rows);
+    const visibleCols = numericCols.slice(0, 4);
+
+    return (
+      <div className="mt-3 rounded-lg border border-border overflow-hidden bg-card/80">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card/50">
+          <BarChart2 className="h-3.5 w-3.5 text-primary" />
+          <span className="text-xs font-medium text-muted-foreground">
+            Monthly trend — {visibleCols.map(formatColHeader).join(", ")}
+          </span>
+        </div>
+        <div className="p-3">
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={data} margin={{ top: 4, right: 12, bottom: 4, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis
+                dataKey="period"
+                tick={{ fontSize: 10, fill: "#94a3b8" }}
+                tickFormatter={v => {
+                  const parts = String(v).split("-");
+                  return parts.length === 2 ? `${parts[1]}/${parts[0].slice(2)}` : v;
+                }}
+                interval="preserveStartEnd"
+              />
+              <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} width={48} />
+              <Tooltip
+                contentStyle={{
+                  background: "#0f172a",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  fontSize: 11,
+                }}
+                labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
+                itemStyle={{ color: "#e2e8f0" }}
+                formatter={(v: number | string) => [
+                  typeof v === "number" ? v.toFixed(2) : v,
+                  "",
+                ]}
+              />
+              {visibleCols.length > 1 && (
+                <Legend wrapperStyle={{ fontSize: 10, color: "#94a3b8" }} />
+              )}
+              {visibleCols.map((col, idx) => (
+                <Line
+                  key={col}
+                  type="monotone"
+                  dataKey={col}
+                  name={formatColHeader(col)}
+                  stroke={CHART_COLORS[idx % CHART_COLORS.length]}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 const SUGGESTED = [
@@ -59,44 +246,87 @@ export default function QACopilot() {
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
+
       let assistantContent = "";
       const sqlQueryLog: string[] = [];
+      const pendingBlocks: Block[] = [];
 
-      setMessages(prev => [...prev, { role: "assistant", content: "", sqlQueries: [] }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "", sqlQueries: [], blocks: [] }]);
+
+      const updateLastMessage = () => {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: "assistant",
+            content: assistantContent,
+            sqlQueries: sqlQueryLog.length > 0 ? [...sqlQueryLog] : undefined,
+            blocks: pendingBlocks.length > 0 ? [...pendingBlocks] : undefined,
+          };
+          return updated;
+        });
+      };
+
+      const handleEvent = (data: Record<string, unknown>) => {
+        if (data.type === "sql_query" && typeof data.rationale === "string") {
+          setSqlStatus(data.rationale);
+          sqlQueryLog.push(data.rationale);
+        } else if (data.type === "sql_done" || data.type === "sql_error") {
+          setSqlStatus(null);
+        } else if (data.type === "table") {
+          pendingBlocks.push({
+            type: "table",
+            columns: data.columns as string[],
+            rows: data.rows as Record<string, unknown>[],
+            totalRows: data.totalRows as number,
+          });
+          updateLastMessage();
+        } else if (data.type === "chart") {
+          pendingBlocks.push({
+            type: "chart",
+            chartType: data.chartType as "timeseries" | "bar",
+            columns: data.columns as string[],
+            rows: data.rows as Record<string, unknown>[],
+          });
+          updateLastMessage();
+        } else if (data.content) {
+          assistantContent += data.content as string;
+          updateLastMessage();
+        } else if (data.error) {
+          assistantContent = String(data.error);
+          updateLastMessage();
+        }
+      };
 
       if (reader) {
+        let sseBuffer = "";
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          for (const line of chunk.split("\n")) {
-            if (!line.startsWith("data: ")) continue;
+
+          sseBuffer += decoder.decode(value, { stream: true });
+
+          const events = sseBuffer.split("\n\n");
+          sseBuffer = events.pop() ?? "";
+
+          for (const rawEvent of events) {
+            const dataLine = rawEvent.split("\n").find(l => l.startsWith("data: "));
+            if (!dataLine) continue;
             try {
-              const data = JSON.parse(line.slice(6)) as Record<string, unknown>;
-              if (data.type === "sql_query" && typeof data.rationale === "string") {
-                setSqlStatus(data.rationale);
-                sqlQueryLog.push(data.rationale);
-              } else if (data.type === "sql_done" || data.type === "sql_error") {
-                setSqlStatus(null);
-              } else if (data.content) {
-                assistantContent += data.content as string;
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = {
-                    role: "assistant",
-                    content: assistantContent,
-                    sqlQueries: sqlQueryLog.length > 0 ? [...sqlQueryLog] : undefined,
-                  };
-                  return updated;
-                });
-              } else if (data.error) {
-                assistantContent = String(data.error);
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = { role: "assistant", content: assistantContent };
-                  return updated;
-                });
-              }
+              const data = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
+              handleEvent(data);
+            } catch {
+              // ignore malformed events
+            }
+          }
+        }
+
+        if (sseBuffer.trim()) {
+          const dataLine = sseBuffer.split("\n").find(l => l.startsWith("data: "));
+          if (dataLine) {
+            try {
+              const data = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
+              handleEvent(data);
             } catch {}
           }
         }
@@ -187,7 +417,7 @@ export default function QACopilot() {
                       </div>
                     )}
                     <div
-                      className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                      className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap w-full ${
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground rounded-tr-sm"
                           : "bg-card border shadow-sm rounded-tl-sm"
@@ -197,6 +427,20 @@ export default function QACopilot() {
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       ) : (
                         msg.content
+                      )}
+
+                      {msg.role === "assistant" && msg.blocks && msg.blocks.length > 0 && (
+                        <div className="mt-1">
+                          {msg.blocks.map((block, bi) => {
+                            if (block.type === "table") {
+                              return <DataTable key={`t-${bi}`} block={block} />;
+                            }
+                            if (block.type === "chart") {
+                              return <DataChart key={`c-${bi}`} block={block} />;
+                            }
+                            return null;
+                          })}
+                        </div>
                       )}
                     </div>
                   </div>
