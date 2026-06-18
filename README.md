@@ -1,5 +1,7 @@
 # Grid Origination Intelligence Platform
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-origination--intelligence--platform.replit.app-14b8a6?style=for-the-badge&logo=replit&logoColor=white)](https://origination-intelligence-platform.replit.app)
+
 A power market siting and PPA origination intelligence tool built for energy procurement teams. Identifies renewable energy projects and greenfield siting opportunities across **ERCOT**, **CAISO**, and **PJM** using real market data, PyPSA optimal power flow, and an 8-dimension scoring engine.
 
 ---
