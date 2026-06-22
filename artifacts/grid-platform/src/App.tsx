@@ -32,6 +32,7 @@ import PypsaCurtailment from "@/pages/pypsa-curtailment";
 import PypsaTxRelief from "@/pages/pypsa-tx-relief";
 import PypsaScarcity from "@/pages/pypsa-scarcity";
 import PypsaBattery from "@/pages/pypsa-battery";
+import CaisoHourly from "@/pages/caiso-hourly";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -68,6 +69,7 @@ function Router() {
         <Route path="/pypsa-tx-relief" component={PypsaTxRelief} />
         <Route path="/pypsa-scarcity" component={PypsaScarcity} />
         <Route path="/pypsa-battery" component={PypsaBattery} />
+        <Route path="/caiso-hourly" component={CaisoHourly} />
         {/* Legacy / spec-documented aliases */}
         <Route path="/rec"><Redirect to="/recs" /></Route>
         <Route path="/ci/heatmap"><Redirect to="/ci-heatmap" /></Route>

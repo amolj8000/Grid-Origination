@@ -6,6 +6,7 @@ export * from "./caiso_node_stats";
 export * from "./pjm_node_stats";
 export * from "./queue_projects";
 export * from "./ercot_hub_hourly";
+export * from "./caiso_hub_hourly";
 export * from "./conversations";
 export * from "./messages";
 export * from "./ercot_buses";

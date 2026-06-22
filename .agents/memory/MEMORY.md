@@ -1,3 +1,4 @@
+- [CAISO Hourly Seeding](caiso-hourly-seeding.md) — caiso_hub_hourly table: 63,495 rows, 3 nodes × 29 months, DA=PRC_LMP/DAM, RT=PRC_HASP_LMP/HASP; seeder is idempotent (skips DA+RT complete months, re-runs DA-only months to patch RT).
 - [Congestion Intelligence Engine](congestion-intel.md) — Phase 1 (7 screens on ercot_node_stats) complete; Phase 2 = PyPSA Python microservice + hourly hub/zone data.
 - [ERCOT curtailment scoring](ercot-curtailment-scoring.md) — zone+asset-type scoring wired to real CDR data; run score-ercot-curtailment script to refresh after new node data.
 - [CAISO curtailment scoring](caiso-curtailment-scoring.md) — zone+asset-type scoring from real OASIS data; ZP26/SP15 solar score ~68-73, NP15 solar ~92; run score-caiso-curtailment to refresh.

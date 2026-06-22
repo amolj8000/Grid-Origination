@@ -31,7 +31,17 @@ const sidebarEntries: NavEntry[] = [
   { title: "Rankings",             href: "/rankings",   icon: List },
   { title: "Map Workspace",        href: "/map",        icon: MapIcon },
   { title: "ERCOT Historical",     href: "/ercot",      icon: Activity },
-  { title: "CAISO Historical",     href: "/caiso",      icon: Zap },
+  {
+    group: {
+      label: "CAISO",
+      icon: Zap,
+      defaultOpen: false,
+      items: [
+        { title: "Historical (Monthly)", href: "/caiso",        icon: Activity },
+        { title: "Hourly Price Data",    href: "/caiso-hourly", icon: Clock },
+      ],
+    },
+  },
   { title: "PJM Historical",       href: "/pjm",        icon: Activity },
   { title: "Nodal Analysis",       href: "/nodal",      icon: Layers },
   { title: "Congestion Analysis",  href: "/congestion", icon: GitBranch },

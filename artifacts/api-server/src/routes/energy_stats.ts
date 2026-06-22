@@ -482,4 +482,76 @@ router.get("/ercot/hub-hourly/nodes", async (req, res) => {
   }
 });
 
+// ─── CAISO Hub Hourly ──────────────────────────────────────────────────────
+// GET /api/caiso/hub-hourly?node=SP15&year=2024&month=7
+// Returns 24-row average hourly DA+RT profile for the selected node/month.
+router.get("/caiso/hub-hourly", async (req, res) => {
+  try {
+    const { node, year, month } = req.query as Record<string, string>;
+    if (!node || !year || !month) {
+      res.status(400).json({ error: "bad_request", message: "node, year, month are required" });
+      return;
+    }
+    const yr = parseInt(year, 10);
+    const mo = parseInt(month, 10);
+    if (isNaN(yr) || isNaN(mo) || mo < 1 || mo > 12) {
+      res.status(400).json({ error: "bad_request", message: "Invalid year or month" });
+      return;
+    }
+    const rows = await db.execute<{ hour: number; da_price: string; rt_price: string }>(
+      sql`SELECT hour,
+             ROUND(AVG(da_price::numeric), 4) AS da_price,
+             ROUND(AVG(rt_price::numeric), 4) AS rt_price
+          FROM caiso_hub_hourly
+          WHERE node = ${node}
+            AND year = ${yr}
+            AND month = ${mo}
+          GROUP BY hour
+          ORDER BY hour`
+    );
+    const totalQ = await db.execute<{ cnt: string }>(
+      sql`SELECT COUNT(*) AS cnt FROM caiso_hub_hourly`
+    );
+    res.json({
+      node, year: yr, month: mo,
+      totalRows: parseInt(totalQ.rows[0]?.cnt ?? "0", 10),
+      hourly: rows.rows.map(r => ({
+        hour: Number(r.hour),
+        daPrice: r.da_price != null ? parseFloat(r.da_price) : null,
+        rtPrice: r.rt_price != null ? parseFloat(r.rt_price) : null,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "caiso/hub-hourly error");
+    res.status(500).json({ error: "internal_error", message: "Failed to fetch CAISO hourly data" });
+  }
+});
+
+// GET /api/caiso/hub-hourly/coverage — seeding progress per node/month
+router.get("/caiso/hub-hourly/coverage", async (req, res) => {
+  try {
+    const rows = await db.execute<{ node: string; year: number; month: number; row_count: string }>(
+      sql`SELECT node, year, month, COUNT(*) AS row_count
+          FROM caiso_hub_hourly
+          GROUP BY node, year, month
+          ORDER BY node, year, month`
+    );
+    const totalQ = await db.execute<{ cnt: string }>(
+      sql`SELECT COUNT(*) AS cnt FROM caiso_hub_hourly`
+    );
+    res.json({
+      totalRows: parseInt(totalQ.rows[0]?.cnt ?? "0", 10),
+      months: rows.rows.map(r => ({
+        node: r.node,
+        year: Number(r.year),
+        month: Number(r.month),
+        rowCount: Number(r.row_count),
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "caiso/hub-hourly/coverage error");
+    res.status(500).json({ error: "internal_error", message: "Failed to fetch CAISO coverage" });
+  }
+});
+
 export default router;
