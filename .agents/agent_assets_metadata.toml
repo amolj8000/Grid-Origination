@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "l3cu-mSXV-oqstn2STiJ3"
+uri = "file://modelling-aeso-prompt.md"
+type = "text"
+title = "Modelling AESO — Full Build Specification"
