@@ -29,6 +29,8 @@ Register free: https://developer-apim.aeso.ca
 | Energy merit order / supply stack | `energymeritorder-api/v1/meritOrder/energy?startDate=` |
 | Intertie/flowgate outages (BC/SK) | `itc/v1/outage?startDate=&endDate=&affectedIntertieOrFlowgate=` |
 | Interchange actual + scheduled | `itc/v1/interchange?startDate=&endDate=&startHE=&endHE=&version=&dataType=&intertieOrFlowgate=&transferType=` |
+| System marginal price (SMP) | `systemmarginalprice-api/v1.1/price/systemMarginalPrice?startDate=&endDate=` |
+| Unit commitment data | `unitcommitmentdata-api/v2/unitCommitment?startDate=&endDate=` |
 | Current supply & demand (snapshot) | `currentsupplydemand-api/v2/csd/summary/current` |
 
 ## DB tables written to
@@ -43,6 +45,8 @@ Register free: https://developer-apim.aeso.ca
 - `aeso_merit_order` — new table (offer blocks per generator per hour; cumulative_mw + is_marginal columns)
 - `aeso_intertie_outage` — new table (BC/SK flowgate outages by hour; Jan 2024→today)
 - `aeso_interchange` — new table (actual + scheduled BC/SK flows; version=1; unique on date+HE+intertie+data_type)
+- `aeso_smp` — pre-existing table (constrained_price, unconstrained_price, spread, volume_mw); Jan 2024→today
+- `aeso_unit_commitment` — new table (committed/dispatched/available MW per asset per hour; last 90 days)
 
 ## Date range
 - Pool price, AIL, gen capacity, op reserve: Jan 2024 → today, by month chunks (gap-fill)

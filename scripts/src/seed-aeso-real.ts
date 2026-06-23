@@ -915,6 +915,176 @@ async function seedInterchange(): Promise<void> {
   console.log(`  Interchange total: ${total} rows`);
 }
 
+// ─── 12. System Marginal Price ────────────────────────────────────────────────
+
+async function seedSMP(): Promise<void> {
+  console.log("\n💲 Seeding system marginal price (Jan 2024 → today)...");
+  let total = 0;
+
+  const existingRes = await db.execute(sql`
+    SELECT EXTRACT(YEAR FROM date)::int AS y, EXTRACT(MONTH FROM date)::int AS m
+    FROM aeso_smp GROUP BY y, m
+  `);
+  const existing = new Set<string>(
+    existingRes.rows.map((r: Record<string, unknown>) => `${r["y"]}-${String(r["m"]).padStart(2, "0")}`)
+  );
+
+  for (const { startDate, endDate, label } of monthRange(2024, 1)) {
+    if (existing.has(label)) {
+      console.log(`  ✓ SMP ${label} already seeded`);
+      continue;
+    }
+    try {
+      const data = await aFetch("systemmarginalprice-api/v1.1/price/systemMarginalPrice", {
+        startDate,
+        endDate,
+      }) as Record<string, unknown>;
+
+      const ret = (data as Record<string, Record<string, unknown[]>>)?.return ?? {};
+      const rows: Record<string, unknown>[] = [];
+      for (const v of Object.values(ret)) {
+        if (Array.isArray(v)) rows.push(...v as Record<string, unknown>[]);
+      }
+
+      if (rows.length === 0) {
+        console.log(`  ⚠️  SMP ${label}: empty`);
+        await sleep(DELAY_MS);
+        continue;
+      }
+
+      const CHUNK = 500;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK) as Record<string, unknown>[];
+        const values = chunk.map((r: Record<string, unknown>) => {
+          const dtStr = String(r["begin_datetime_mpt"] ?? r["datetime_mpt"] ?? "");
+          let dt: { date: string; hourEnding: number };
+          try { dt = parseAesoDatetime(dtStr); }
+          catch { return null; }
+
+          const constrained   = safeFloat(r["constrained_price"] ?? r["system_marginal_price"] ?? r["smp"]);
+          const unconstrained = safeFloat(r["unconstrained_price"] ?? r["unconstrained_system_marginal_price"]);
+          const spread        = constrained !== null && unconstrained !== null ? constrained - unconstrained : null;
+          const volume        = safeFloat(r["volume_mw"] ?? r["dispatched_mw"] ?? r["mw"]);
+
+          return `(
+            '${dt.date}', ${dt.hourEnding},
+            ${constrained ?? "NULL"},
+            ${unconstrained ?? "NULL"},
+            ${spread ?? "NULL"},
+            ${volume ?? "NULL"}
+          )`;
+        }).filter(Boolean).join(",\n");
+
+        if (values) {
+          await db.execute(sql.raw(`
+            INSERT INTO aeso_smp (date, hour_ending, constrained_price, unconstrained_price, spread, volume_mw)
+            VALUES ${values}
+            ON CONFLICT (date, hour_ending) DO UPDATE SET
+              constrained_price   = EXCLUDED.constrained_price,
+              unconstrained_price = EXCLUDED.unconstrained_price,
+              spread              = EXCLUDED.spread,
+              volume_mw           = EXCLUDED.volume_mw
+          `));
+        }
+      }
+      total += rows.length;
+      console.log(`  ✓ SMP ${label}: ${rows.length} rows`);
+    } catch (e: unknown) {
+      console.error(`  ❌ SMP ${label}: ${(e as Error).message}`);
+    }
+    await sleep(DELAY_MS);
+  }
+  console.log(`  SMP total: ${total} rows`);
+}
+
+// ─── 13. Unit Commitment Data ─────────────────────────────────────────────────
+
+async function seedUnitCommitment(): Promise<void> {
+  console.log("\n⚙️  Seeding unit commitment data (last 90 days)...");
+  const today = new Date();
+  const start = offsetDate(today, -90);
+  let total = 0;
+
+  const chunks: Array<{ s: string; e: string }> = [];
+  let cur = new Date(start);
+  while (cur < today) {
+    const next = offsetDate(cur, 7);
+    const e = next > today ? today : next;
+    chunks.push({ s: cur.toISOString().slice(0, 10), e: e.toISOString().slice(0, 10) });
+    cur = next;
+  }
+
+  for (const { s, e } of chunks) {
+    try {
+      const data = await aFetch("unitcommitmentdata-api/v2/unitCommitment", {
+        startDate: s,
+        endDate:   e,
+      }) as Record<string, unknown>;
+
+      const ret = (data as Record<string, Record<string, unknown[]>>)?.return ?? {};
+      const rows: Record<string, unknown>[] = [];
+      for (const v of Object.values(ret)) {
+        if (Array.isArray(v)) rows.push(...v as Record<string, unknown>[]);
+      }
+
+      if (rows.length === 0) {
+        console.log(`  ⚠️  UnitCommitment ${s}: empty`);
+        await sleep(DELAY_MS);
+        continue;
+      }
+
+      const CHUNK = 500;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK) as Record<string, unknown>[];
+        const values = chunk.map((r: Record<string, unknown>) => {
+          const dtStr = String(r["begin_datetime_mpt"] ?? r["datetime_mpt"] ?? "");
+          let dt: { date: string; hourEnding: number };
+          try { dt = parseAesoDatetime(dtStr); }
+          catch { return null; }
+
+          const assetId   = String(r["asset_ID"] ?? r["asset_id"] ?? "").replace(/'/g, "''");
+          const assetName = String(r["asset_name"] ?? "").replace(/'/g, "''");
+          const fuelType  = String(r["fuel_type"] ?? r["fuelType"] ?? "").replace(/'/g, "''");
+          const committed = safeFloat(r["committed_mw"] ?? r["commitment_mw"]);
+          const dispatched = safeFloat(r["dispatched_mw"] ?? r["dispatch_mw"]);
+          const available  = safeFloat(r["available_mw"] ?? r["max_mw"]);
+          const mustRun    = String(r["must_run_ind"] ?? r["must_run"] ?? "0") === "1" ? "true" : "false";
+          const status     = String(r["commitment_status"] ?? r["status"] ?? "").replace(/'/g, "''");
+
+          return `(
+            '${dt.date}', ${dt.hourEnding},
+            '${assetId}', ${assetName ? `'${assetName}'` : "NULL"},
+            ${fuelType ? `'${fuelType}'` : "NULL"},
+            ${committed ?? "NULL"}, ${dispatched ?? "NULL"}, ${available ?? "NULL"},
+            ${mustRun}, ${status ? `'${status}'` : "NULL"}
+          )`;
+        }).filter(Boolean).join(",\n");
+
+        if (values) {
+          await db.execute(sql.raw(`
+            INSERT INTO aeso_unit_commitment
+              (date, hour_ending, asset_id, asset_name, fuel_type,
+               committed_mw, dispatched_mw, available_mw, must_run, commitment_status)
+            VALUES ${values}
+            ON CONFLICT (date, hour_ending, asset_id) DO UPDATE SET
+              committed_mw      = EXCLUDED.committed_mw,
+              dispatched_mw     = EXCLUDED.dispatched_mw,
+              available_mw      = EXCLUDED.available_mw,
+              must_run          = EXCLUDED.must_run,
+              commitment_status = EXCLUDED.commitment_status
+          `));
+        }
+      }
+      total += rows.length;
+      console.log(`  ✓ UnitCommitment ${s}→${e}: ${rows.length} rows`);
+    } catch (e2: unknown) {
+      console.error(`  ❌ UnitCommitment ${s}: ${(e2 as Error).message}`);
+    }
+    await sleep(DELAY_MS);
+  }
+  console.log(`  UnitCommitment total: ${total} rows`);
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -936,6 +1106,8 @@ async function main(): Promise<void> {
   await seedMeritOrder();
   await seedIntertiOutage();
   await seedInterchange();
+  await seedSMP();
+  await seedUnitCommitment();
 
   console.log("\n✅ AESO real data seeding complete!");
   process.exit(0);
