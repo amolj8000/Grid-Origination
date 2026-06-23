@@ -43,21 +43,24 @@ The platform has two target users:
 
 | Path | Purpose |
 |------|---------|
-| `/` | Dashboard — pool price summary, generation mix donut, peak demand stats, market status |
-| `/pool-price` | Historical Pool Price — hourly/daily/monthly AESO pool price (2024–present), with volatility and spike analysis |
-| `/supply-demand` | Supply & Demand Fundamentals — hourly Alberta Internal Load (AIL), total available capacity, reserve margin |
+| `/` | Dashboard — pool price summary, generation mix donut, peak demand stats, 7-day capacity widget, market alerts |
+| `/pool-price` | Historical Pool Price — hourly/daily/monthly AESO pool price (2024–present), volatility and spike analysis |
+| `/supply-demand` | Supply & Demand Fundamentals — hourly AIL, available capacity, reserve margin, interchange |
 | `/generation` | Generation Mix — hourly/monthly breakdown by fuel type (gas, coal, wind, solar, hydro, storage) |
+| `/outages` | Outage Tracker — planned and forced generator outages (monthly forecast + daily actuals), capacity impact |
+| `/7day-capacity` | 7-Day Capacity Outlook — forward-looking hourly available capability by fuel type, reserve margin forecast |
+| `/wind-solar-forecast` | Wind & Solar Forecasting — AESO T-4h/T-1h forecasts vs actuals, forecast error analysis, ML accuracy |
 | `/interconnection` | Interconnection Queue — Alberta generation projects awaiting connection, by type, MW, status |
 | `/congestion` | Congestion Intelligence — AESO constrained-up/down generation events, transmission constraint analysis |
 | `/nodal` | Nodal Transition Tracker — EME project timeline, simulated LMP spread analysis, readiness assessment |
-| `/pypsa-network` | PyPSA Alberta Network — 240-bus reduced-order Alberta network, transmission topology viz, OPF results |
+| `/pypsa-network` | PyPSA Alberta Network — 15-bus reduced-order Alberta network, transmission topology viz, OPF results |
 | `/pypsa-opf` | OPF Dispatch Simulator — interactive load/wind/solar CF sliders, real-time LMP spread output |
 | `/pypsa-ml` | ML Congestion Model — XGBoost trained on pool price volatility + constraint events, feature importance |
 | `/pypsa-scarcity` | Scarcity & Price Spike Model — high-price event analysis ($500–$999.99/MWh VOLL) |
 | `/screening` | Project Screening — filter generation projects by zone, fuel type, capacity, congestion risk |
 | `/map` | Map Workspace — Alberta generation projects on Leaflet map, transmission lines, constraint zones |
 | `/guide` | Platform Guide — explains AESO market structure, EME transition, data sources |
-| `/qa` | Q&A Copilot — LLM chat interface (planned: OpenAI + DB RAG) |
+| `/qa` | Q&A Copilot — LLM chat interface (planned: OpenAI + DB RAG, seeded with AESO market-updates text) |
 | `/export` | Export Center — top project cards + CSV export |
 
 ---
@@ -104,12 +107,67 @@ The platform has two target users:
 - Also check: https://www.interconnection.fyi/?market=AESO (aggregated queue data)
 - Target table: `aeso_queue_projects` — name, fuel_type, capacity_mw, region, status, queue_date, expected_online
 
-### 6. Annual Market Statistics
+### 6. Actual vs Forecast — Wind, Market Resource Query Hourly (WMRQH)
+**URL:** `http://ets.aeso.ca/ets_web/ip/Market/Reports/ActualForecastWMRQHReportServlet`
+- Real-time and historical comparison of actual vs forecast for: pool price, AIL, wind generation, solar generation
+- Key for measuring forecast accuracy and building ML features (forecast error is a strong price spike predictor)
+- HTML report; scrape or download as CSV
+- Target table: `aeso_actual_forecast` — date, hour_ending, actual_pool_price, forecast_pool_price, actual_wind_mw, forecast_wind_mw, actual_ail_mw, forecast_ail_mw, actual_solar_mw, forecast_solar_mw
+- **Use in:** Wind/Solar Forecasting page, pool price spike ML model (forecast_error feature)
+
+### 7. Market Updates
+**URL:** https://www.aeso.ca/market/market-updates/
+- Narrative updates from AESO on market conditions, price events, EME progress, grid events
+- Scrape as text for the Q&A Copilot RAG corpus and for the "Market Alerts" sidebar widget on the dashboard
+- Not a structured data source; use for LLM context enrichment only
+
+### 8. Monthly Outage Forecast
+**URL:** `http://ets.aeso.ca/ets_web/ip/Market/Reports/MonthlyOutageForecastReportServlet?contentType=html`
+- Planned generator outages by month, by facility, with MW offline and reason
+- Critical for available capacity forecasting and reserve margin analysis
+- Fields: facility name, fuel type, planned outage start, end, MW offline, reason
+- Target table: `aeso_outages` — facility, fuel_type, outage_start, outage_end, mw_offline, outage_type (planned/forced), reason
+- **Use in:** Outage Tracker page, reserve margin forecasting, supply/demand forward curve
+
+### 9. Daily Outage Report
+**URL:** `http://ets.aeso.ca/ets_web/ip/Market/Reports/DailyOutageReportServlet?contentType=html`
+- Same as Monthly Outage Forecast but day-ahead granularity; includes both planned and forced outages
+- More timely signal for next-day capacity margin
+- Upsert into `aeso_outages` table (same schema as Monthly Outage Forecast above)
+- **Seeder note:** Run daily to keep current-day outage data fresh
+
+### 10. Seven-Day Hourly Available Capability Forecast
+**URL:** `http://ets.aeso.ca/ets_web/ip/Market/Reports/SevenDaysHourlyAvailableCapabilityReportServlet?contentType=html`
+- 7-day ahead, hour-by-hour available generation capability by fuel type
+- This is the forward-looking version of the supply/demand fundamentals report
+- Key for identifying upcoming tight reserve margin periods (predictive congestion risk)
+- Fields: hour_ending, gas_mw, wind_mw, solar_mw, hydro_mw, storage_mw, total_mw, net_available_mw
+- Target table: `aeso_7day_capability` — forecast_date, target_date, hour_ending, gas_mw, wind_mw, solar_mw, hydro_mw, total_available_mw, ail_forecast_mw, reserve_margin_pct
+- **Use in:** 7-Day Capacity Outlook page, reserve margin alert widget on dashboard
+- **Seeder note:** Upsert daily; keep 30 days of forecasts to track forecast accuracy over time
+
+### 11. Wind and Solar Power Forecasting
+**URL:** https://www.aeso.ca/grid/grid-planning/forecasting/wind-and-solar-power-forecasting/
+- AESO's official wind and solar generation forecasting methodology and published forecast data
+- Includes T-4h (4-hour ahead) and T-1h (1-hour ahead) forecasts for total wind + solar fleet
+- **Key insight:** Wind forecast errors > ±500 MW are a strong predictor of price spikes; solar ramps drive afternoon duck-curve events
+- Use this page's published forecast CSVs to populate `aeso_actual_forecast` (supplement to WMRQH servlet above)
+- Also document AESO's forecast methodology in the Platform Guide for user context
+- **Use in:** Wind/Solar Forecast Accuracy page, ML congestion model features
+
+### 12. Dispatcho (Third-party AESO data aggregator)
+**URL:** https://www.dispatcho.app/
+- Commercial aggregator of AESO real-time and historical data with clean API-style access
+- Use as a **fallback reference** to validate scraped ETS portal data and cross-check any parsing anomalies
+- Do NOT use as a primary data source (commercial, may have terms-of-service restrictions)
+- Useful for: manually verifying specific price events, checking outage data completeness, understanding data format quirks before writing scrapers
+
+### 13. Annual Market Statistics
 **URL:** https://www.aeso.ca/assets/Uploads/market-and-system-reporting/Annual-Market-Stats-2024.pdf
 - Annual report with: average pool price by month, peak demand, generation by fuel, interconnection summary
 - Use this to validate seeded data and populate summary stats on the dashboard
 
-### 7. Transmission Capability
+### 14. Transmission Capability
 **URL:** https://www.aeso.ca/grid/connecting-to-the-grid/transmission-capability-map/
 - Transmission capability map showing MW headroom on major corridors
 - Key corridors: North-South 500kV backbone, Calgary area, Edmonton area, BC interties, SK interties
@@ -202,6 +260,60 @@ CREATE TABLE aeso_transmission_corridors (
   typical_loading_pct NUMERIC(6,2),
   constraint_frequency VARCHAR(50),  -- rare/occasional/frequent/chronic
   notes TEXT
+);
+
+-- Actual vs Forecast (WMRQH + Wind/Solar Forecasting pages)
+CREATE TABLE aeso_actual_forecast (
+  id SERIAL PRIMARY KEY,
+  date DATE NOT NULL,
+  hour_ending INTEGER NOT NULL,       -- 1-24 (HE convention)
+  actual_pool_price NUMERIC(10,4),
+  forecast_pool_price NUMERIC(10,4),
+  price_forecast_error NUMERIC(10,4) GENERATED ALWAYS AS (actual_pool_price - forecast_pool_price) STORED,
+  actual_ail_mw NUMERIC(10,2),
+  forecast_ail_mw NUMERIC(10,2),
+  actual_wind_mw NUMERIC(10,2),
+  forecast_wind_mw NUMERIC(10,2),
+  wind_forecast_error_mw NUMERIC(10,2) GENERATED ALWAYS AS (actual_wind_mw - forecast_wind_mw) STORED,
+  actual_solar_mw NUMERIC(10,2),
+  forecast_solar_mw NUMERIC(10,2),
+  solar_forecast_error_mw NUMERIC(10,2) GENERATED ALWAYS AS (actual_solar_mw - forecast_solar_mw) STORED,
+  source VARCHAR(50),                 -- 'wmrqh' or 'aeso_forecast'
+  UNIQUE (date, hour_ending)
+);
+
+-- Generator outages (monthly forecast + daily actuals)
+CREATE TABLE aeso_outages (
+  id SERIAL PRIMARY KEY,
+  facility VARCHAR(200) NOT NULL,
+  fuel_type VARCHAR(50),              -- gas, wind, solar, hydro, storage
+  outage_type VARCHAR(20),            -- planned, forced, derated
+  outage_start TIMESTAMP NOT NULL,
+  outage_end TIMESTAMP,
+  mw_offline NUMERIC(10,2),
+  reason TEXT,
+  source VARCHAR(30),                 -- 'monthly_forecast' or 'daily_report'
+  reported_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON aeso_outages (outage_start);
+CREATE INDEX ON aeso_outages (fuel_type);
+
+-- 7-day hourly available capability forecast
+CREATE TABLE aeso_7day_capability (
+  id SERIAL PRIMARY KEY,
+  forecast_date DATE NOT NULL,        -- date the forecast was published
+  target_date DATE NOT NULL,          -- date being forecast
+  hour_ending INTEGER NOT NULL,       -- 1-24
+  gas_mw NUMERIC(10,2),
+  wind_mw NUMERIC(10,2),
+  solar_mw NUMERIC(10,2),
+  hydro_mw NUMERIC(10,2),
+  storage_mw NUMERIC(10,2),
+  other_mw NUMERIC(10,2),
+  total_available_mw NUMERIC(10,2),
+  ail_forecast_mw NUMERIC(10,2),
+  reserve_margin_pct NUMERIC(6,2),
+  UNIQUE (forecast_date, target_date, hour_ending)
 );
 ```
 
@@ -309,6 +421,27 @@ GET  /pypsa/scenarios                — list of named OPF scenarios (base/high-
 - Geocode project county to lat/lng using Alberta county centroids lookup table
 - Insert into `aeso_queue_projects`
 
+### seed-aeso-actual-forecast.ts
+- Source: `ActualForecastWMRQHReportServlet` — scrape HTML table for each day
+- Supplement with AESO wind/solar power forecasting CSV downloads
+- Populate `aeso_actual_forecast` with actual vs forecast for pool price, AIL, wind, solar
+- Target: ~22,000 rows (Jan 2024–present)
+- **Note:** Computed columns (forecast errors) are GENERATED ALWAYS — no manual calculation needed
+
+### seed-aeso-outages.ts
+- Source 1: `MonthlyOutageForecastReportServlet` — scrape monthly planned outage table
+- Source 2: `DailyOutageReportServlet` — scrape daily outage schedule
+- Parse facility name, fuel type, start/end, MW offline, outage type
+- Upsert into `aeso_outages` with idempotency on (facility, outage_start, outage_type)
+- **Run order:** Monthly forecast first (bulk historical), then daily for current data
+
+### seed-aeso-7day-capability.ts
+- Source: `SevenDaysHourlyAvailableCapabilityReportServlet`
+- Scrape the HTML table: 168 rows (7 days × 24 hours) per run
+- Store with `forecast_date = today` and `target_date = each forecast day`
+- Run daily via cron to build a historical record of forecast accuracy over time
+- Target: rolling 30-day window of forecasts in `aeso_7day_capability`
+
 ---
 
 ## Key AESO Market Facts to Encode in the UI
@@ -412,6 +545,40 @@ This is unique to AESO (no equivalent in ERCOT-focused platform since ERCOT is a
 
 ---
 
+## Outage Tracker Page — Key Features
+
+1. **Monthly Outage Calendar** — Gantt-style calendar showing planned outages per facility, MW offline, and duration
+2. **Total MW Offline by Month** — bar chart of aggregate planned outage capacity by fuel type (gas vs wind vs hydro)
+3. **Capacity Impact on Reserve Margin** — overlay outage MW on reserve margin chart to show tight-capacity periods
+4. **Forced vs Planned Split** — donut chart of forced outage events vs planned maintenance
+5. **Facility Outage History** — searchable table: facility, outage type, MW, start, end, duration hours
+6. **Next 30 Days Outlook** — forward-looking panel showing upcoming planned outages and resulting reserve margin
+
+---
+
+## 7-Day Capacity Outlook Page — Key Features
+
+1. **Hourly Available Capability Stack** — stacked bar chart (gas/wind/solar/hydro/storage) for next 7 days, 168 bars
+2. **Reserve Margin Forecast** — line chart of forecast reserve margin % by hour, with red warning zones (<10%)
+3. **Net Load Forecast** — AIL forecast minus wind and solar forecast = net thermal requirement
+4. **Daily Min/Max Reserve** — table summary: each of the next 7 days, lowest and highest reserve margin and the hour
+5. **Historical Forecast Accuracy** — how accurate were 7-day forecasts from 30 days ago vs what actually happened
+6. **Alert Widget** — automatically flag any hours in the next 7 days where reserve margin < 10% (tight supply alert)
+
+---
+
+## Wind & Solar Forecasting Accuracy Page — Key Features
+
+1. **Forecast vs Actual Time Series** — dual line chart: AESO wind forecast vs actual wind generation, hourly
+2. **Forecast Error Distribution** — histogram of wind forecast errors (MW) — shows bias and variance
+3. **Solar Duck Curve Analysis** — average solar injection curve by month, overlaid on net load, showing ramp steepness
+4. **Error by Hour of Day** — average absolute forecast error by hour (solar errors peak at solar noon; wind errors overnight)
+5. **Price Spike Correlation** — scatter plot of wind forecast error vs pool price — strong negative correlation (more wind shortfall → higher price)
+6. **T-4h vs T-1h Accuracy** — compare AESO's 4-hour-ahead vs 1-hour-ahead forecast accuracy over time
+7. **ML Feature Importance** — show wind forecast error as a key feature in the pool price spike ML model
+
+---
+
 ## Interconnection Queue Page
 
 - Table: all AESO active queue projects, sortable by MW/type/date
@@ -442,17 +609,24 @@ Score each queue project on 8 dimensions (1–10 scale), similar to the ERCOT pl
 ## API Routes (Express, prefix /api)
 
 ```
-GET /api/aeso/pool-price           — query params: from, to, node (future)
-GET /api/aeso/pool-price/stats     — monthly/annual summary stats
-GET /api/aeso/pool-price/spikes    — all hours with pool price > threshold
-GET /api/aeso/generation           — hourly generation mix, query: from, to
-GET /api/aeso/supply-demand        — hourly AIL, capacity, reserve margin
-GET /api/aeso/supply-demand/stats  — monthly averages
-GET /api/aeso/queue                — all queue projects, filter: type, region, status
-GET /api/aeso/queue/stats          — summary: MW by fuel type, region breakdown
-GET /api/aeso/constraints          — constrained generation events, filter: type, from, to
-GET /api/aeso/constraints/summary  — constraint cost and frequency by corridor
-GET /api/pypsa/...                 — reverse-proxied to FastAPI Python microservice (port 8083)
+GET /api/aeso/pool-price               — query params: from, to
+GET /api/aeso/pool-price/stats         — monthly/annual summary stats
+GET /api/aeso/pool-price/spikes        — all hours with pool price > threshold (default $300)
+GET /api/aeso/generation               — hourly generation mix, query: from, to
+GET /api/aeso/supply-demand            — hourly AIL, capacity, reserve margin
+GET /api/aeso/supply-demand/stats      — monthly averages
+GET /api/aeso/actual-forecast          — actual vs forecast data, query: from, to, metric
+GET /api/aeso/actual-forecast/errors   — forecast error stats by hour/month/metric
+GET /api/aeso/outages                  — generator outage events, filter: type, from, to, fuel_type
+GET /api/aeso/outages/summary          — MW offline by month, by fuel type
+GET /api/aeso/outages/upcoming         — outages starting in next 30 days
+GET /api/aeso/7day-capability          — latest 7-day hourly capability forecast
+GET /api/aeso/7day-capability/accuracy — historical forecast accuracy vs actuals
+GET /api/aeso/queue                    — all queue projects, filter: type, region, status
+GET /api/aeso/queue/stats              — summary: MW by fuel type, region breakdown
+GET /api/aeso/constraints              — constrained generation events, filter: type, from, to
+GET /api/aeso/constraints/summary      — constraint cost and frequency by corridor
+GET /api/pypsa/...                     — reverse-proxied to FastAPI Python microservice (port 8083)
 ```
 
 ---
@@ -464,7 +638,12 @@ Dashboard
 Pool Price
 Supply & Demand
 Generation Mix
-AESO [collapsible group]
+Capacity & Outages [collapsible group]
+  ├── Outage Tracker
+  └── 7-Day Capacity Outlook
+Renewables [collapsible group]
+  └── Wind & Solar Forecasting
+AESO Market [collapsible group]
   ├── Interconnection Queue
   ├── Congestion Intelligence
   └── Nodal Transition Tracker
@@ -488,11 +667,14 @@ Platform Guide
 - [ ] Pool price page shows real hourly prices with spike detection and duration curve
 - [ ] Supply/demand page shows real AIL, available capacity, reserve margin charts
 - [ ] Generation mix page shows fuel-type breakdown by hour/month
+- [ ] Outage Tracker page renders planned/forced outage data from monthly + daily ETS reports
+- [ ] 7-Day Capacity Outlook page renders current forecast from SevenDaysHourly servlet
+- [ ] Wind & Solar Forecasting page renders AESO actual vs forecast with error analysis
 - [ ] Interconnection queue populated from AESO connection project reporting
 - [ ] Congestion page shows real constrained-up/down event data
 - [ ] PyPSA Alberta 15-bus OPF running at /pypsa/healthz → 200
 - [ ] /pypsa/opf accepts wind_cf + load_mw and returns bus-level LMP spreads
-- [ ] ML model trained on pool price + supply/demand features; /pypsa/ml/predict returns spike probability
+- [ ] ML model trained on pool price + supply/demand + forecast-error features; /pypsa/ml/predict returns spike probability
 - [ ] All pages render with real data; no placeholder/mock data except where AESO data unavailable
 - [ ] Map shows queue projects and PyPSA bus LMPs on Alberta basemap
 - [ ] Nodal Transition Tracker page explains EME and shows simulated LMP map
@@ -501,12 +683,15 @@ Platform Guide
 
 ## Seeder Execution Order
 
-1. `seed-aeso-pool-price` — download and parse hourly pool price + AIL (Jan 2024–present)
+1. `seed-aeso-pool-price` — hourly pool price + AIL (Jan 2024–present)
 2. `seed-aeso-generation-mix` — hourly fuel-type breakdown
 3. `seed-aeso-supply-demand` — available capacity, reserve margin, interchange
-4. `seed-aeso-queue` — interconnection queue projects with geocoding
-5. `seed-aeso-constraints` — constrained-up/down event history
-6. (PyPSA microservice runs independently, seeded on startup via pre-computed OPF)
+4. `seed-aeso-actual-forecast` — actual vs forecast for pool price, AIL, wind, solar (WMRQH servlet)
+5. `seed-aeso-outages` — monthly forecast outages first, then daily actuals
+6. `seed-aeso-7day-capability` — current 7-day hourly available capability (run daily)
+7. `seed-aeso-queue` — interconnection queue projects with geocoding
+8. `seed-aeso-constraints` — constrained-up/down event history
+9. (PyPSA microservice runs independently, seeded on startup via pre-computed OPF)
 
 ---
 
