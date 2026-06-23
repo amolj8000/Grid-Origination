@@ -754,6 +754,167 @@ async function seedMeritOrder(): Promise<void> {
   console.log(`  MeritOrder total: ${total} rows`);
 }
 
+// ─── 10. Intertie Outages (BC/SK flowgate outages) ───────────────────────────
+
+async function seedIntertiOutage(): Promise<void> {
+  console.log("\n🔌 Seeding intertie/flowgate outages (Jan 2024 → today)...");
+  let total = 0;
+
+  const existingRes = await db.execute(sql`
+    SELECT EXTRACT(YEAR FROM date)::int AS y, EXTRACT(MONTH FROM date)::int AS m
+    FROM aeso_intertie_outage GROUP BY y, m
+  `);
+  const existing = new Set<string>(
+    existingRes.rows.map((r: Record<string, unknown>) => `${r["y"]}-${String(r["m"]).padStart(2, "0")}`)
+  );
+
+  for (const { startDate, endDate, label } of monthRange(2024, 1)) {
+    if (existing.has(label)) {
+      console.log(`  ✓ IntertieOutage ${label} already seeded`);
+      continue;
+    }
+    try {
+      const data = await aFetch("itc/v1/outage", { startDate, endDate }) as Record<string, unknown>;
+      const ret = (data as Record<string, Record<string, unknown[]>>)?.return ?? {};
+      const rows: Record<string, unknown>[] = [];
+      for (const v of Object.values(ret)) {
+        if (Array.isArray(v)) rows.push(...v as Record<string, unknown>[]);
+      }
+
+      if (rows.length === 0) {
+        console.log(`  ⚠️  IntertieOutage ${label}: empty`);
+        await sleep(DELAY_MS);
+        continue;
+      }
+
+      const values = rows.map((r: Record<string, unknown>) => {
+        const dtStr = String(r["begin_datetime_mpt"] ?? r["date"] ?? "");
+        let dt: { date: string; hourEnding: number };
+        try { dt = parseAesoDatetime(dtStr); }
+        catch { return null; }
+        const itc = String(r["intertie_or_flowgate"] ?? r["intertie"] ?? r["flowgate"] ?? "").replace(/'/g, "''");
+        const affected = String(r["affected_intertie"] ?? r["affected_intertie_or_flowgate"] ?? itc).replace(/'/g, "''");
+        const outageType = String(r["outage_type"] ?? "").replace(/'/g, "''");
+        const reason = String(r["outage_reason"] ?? r["reason"] ?? "").replace(/'/g, "''");
+        return `(
+          '${dt.date}', ${dt.hourEnding},
+          '${itc}', '${affected}',
+          ${safeFloat(r["outage_mw"] ?? r["outage_capability_mw"]) ?? "NULL"},
+          ${safeFloat(r["available_transfer_mw"] ?? r["available_capability_mw"]) ?? "NULL"},
+          ${outageType ? `'${outageType}'` : "NULL"},
+          ${reason ? `'${reason}'` : "NULL"}
+        )`;
+      }).filter(Boolean).join(",\n");
+
+      if (values) {
+        await db.execute(sql.raw(`
+          INSERT INTO aeso_intertie_outage
+            (date, hour_ending, intertie_or_flowgate, affected_intertie,
+             outage_mw, available_transfer_mw, outage_type, outage_reason)
+          VALUES ${values}
+          ON CONFLICT (date, hour_ending, intertie_or_flowgate) DO UPDATE SET
+            outage_mw             = EXCLUDED.outage_mw,
+            available_transfer_mw = EXCLUDED.available_transfer_mw,
+            outage_type           = EXCLUDED.outage_type
+        `));
+        total += rows.length;
+        console.log(`  ✓ IntertieOutage ${label}: ${rows.length} rows`);
+      }
+    } catch (e: unknown) {
+      console.error(`  ❌ IntertieOutage ${label}: ${(e as Error).message}`);
+    }
+    await sleep(DELAY_MS);
+  }
+  console.log(`  IntertieOutage total: ${total} rows`);
+}
+
+// ─── 11. Interchange (actual + scheduled BC/SK flows) ─────────────────────────
+
+async function seedInterchange(): Promise<void> {
+  console.log("\n↔️  Seeding interchange actual/scheduled (Jan 2024 → today)...");
+  let total = 0;
+
+  const existingRes = await db.execute(sql`
+    SELECT EXTRACT(YEAR FROM date)::int AS y, EXTRACT(MONTH FROM date)::int AS m
+    FROM aeso_interchange GROUP BY y, m
+  `);
+  const existing = new Set<string>(
+    existingRes.rows.map((r: Record<string, unknown>) => `${r["y"]}-${String(r["m"]).padStart(2, "0")}`)
+  );
+
+  for (const { startDate, endDate, label } of monthRange(2024, 1)) {
+    if (existing.has(label)) {
+      console.log(`  ✓ Interchange ${label} already seeded`);
+      continue;
+    }
+    try {
+      // version=1 = preliminary settlement data; HE range 1-24 for full day
+      const data = await aFetch("itc/v1/interchange", {
+        startDate,
+        endDate,
+        startHE: "1",
+        endHE: "24",
+        version: "1",
+      }) as Record<string, unknown>;
+
+      const ret = (data as Record<string, Record<string, unknown[]>>)?.return ?? {};
+      const rows: Record<string, unknown>[] = [];
+      for (const v of Object.values(ret)) {
+        if (Array.isArray(v)) rows.push(...v as Record<string, unknown>[]);
+      }
+
+      if (rows.length === 0) {
+        console.log(`  ⚠️  Interchange ${label}: empty`);
+        await sleep(DELAY_MS);
+        continue;
+      }
+
+      const CHUNK = 500;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK) as Record<string, unknown>[];
+        const values = chunk.map((r: Record<string, unknown>) => {
+          const dtStr = String(r["begin_datetime_mpt"] ?? r["datetime_mpt"] ?? r["date"] ?? "");
+          let dt: { date: string; hourEnding: number };
+          try { dt = parseAesoDatetime(dtStr); }
+          catch { return null; }
+          const itc = String(r["intertie_or_flowgate"] ?? r["intertie"] ?? "").replace(/'/g, "''");
+          const transferType = String(r["transfer_type"] ?? r["transferType"] ?? "").replace(/'/g, "''");
+          const dataType = String(r["data_type"] ?? r["dataType"] ?? "actual").replace(/'/g, "''");
+          const ver = parseInt(String(r["version"] ?? "1"), 10);
+          const scheduled = safeFloat(r["scheduled_mw"] ?? r["schedule_mw"]);
+          const actual = safeFloat(r["actual_mw"] ?? r["actual"]);
+          const net = safeFloat(r["net_mw"] ?? (actual !== null ? actual : null));
+          return `(
+            '${dt.date}', ${dt.hourEnding},
+            '${itc}', '${transferType}', '${dataType}',
+            ${scheduled ?? "NULL"}, ${actual ?? "NULL"}, ${net ?? "NULL"}, ${ver}
+          )`;
+        }).filter(Boolean).join(",\n");
+
+        if (values) {
+          await db.execute(sql.raw(`
+            INSERT INTO aeso_interchange
+              (date, hour_ending, intertie_or_flowgate, transfer_type, data_type,
+               scheduled_mw, actual_mw, net_mw, version)
+            VALUES ${values}
+            ON CONFLICT (date, hour_ending, intertie_or_flowgate, data_type) DO UPDATE SET
+              scheduled_mw  = EXCLUDED.scheduled_mw,
+              actual_mw     = EXCLUDED.actual_mw,
+              net_mw        = EXCLUDED.net_mw,
+              version       = EXCLUDED.version
+          `));
+        }
+      }
+      total += rows.length;
+      console.log(`  ✓ Interchange ${label}: ${rows.length} rows`);
+    } catch (e: unknown) {
+      console.error(`  ❌ Interchange ${label}: ${(e as Error).message}`);
+    }
+    await sleep(DELAY_MS);
+  }
+  console.log(`  Interchange total: ${total} rows`);
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -773,6 +934,8 @@ async function main(): Promise<void> {
   await seedAssetList();
   await seedPoolParticipants();
   await seedMeritOrder();
+  await seedIntertiOutage();
+  await seedInterchange();
 
   console.log("\n✅ AESO real data seeding complete!");
   process.exit(0);
