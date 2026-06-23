@@ -1,7 +1,7 @@
 """
 PyPSA Engine — FastAPI microservice
 ------------------------------------
-Endpoints:
+Endpoints (ERCOT):
   GET  /pypsa/healthz
   GET  /pypsa/network            — static ERCOT 5-bus topology
   POST /pypsa/opf                — run DC OPF with custom scenario params
@@ -13,6 +13,12 @@ Endpoints:
   POST /pypsa/tx-relief          — transmission line upgrade before/after comparison
   POST /pypsa/scarcity           — thermal derate + load shedding scarcity scenario
   POST /pypsa/battery            — 24-hr multi-period OPF with battery StorageUnit
+
+Endpoints (Alberta / AESO):
+  GET  /pypsa/aeso/topology      — 3-node Alberta network topology for map
+  POST /pypsa/aeso/opf           — run Alberta DC OPF with scenario params
+  GET  /pypsa/aeso/opf/default   — cached default high-wind scenario result
+  POST /pypsa/aeso/sensitivity   — sweep a single parameter (wind_cf, load, etc.)
 """
 
 import os
@@ -421,6 +427,109 @@ async def admin_seed(
         "mode": mode,
         "message": "Seed running in background — poll GET /pypsa/admin/seed-status for progress",
     }
+
+
+# ---------------------------------------------------------------------------
+# Alberta / AESO — 3-node OPF
+# ---------------------------------------------------------------------------
+
+class AesoOPFRequest(BaseModel):
+    system_load_mw: float       = 10500.0   # Provincial AIL (realistic: 9,000–12,500 MW)
+    wind_cf: float              = 0.35       # Southern wind capacity factor
+    solar_cf: float             = 0.22       # Southern solar capacity factor
+    gas_price_mmbtu: float      = 4.50       # AECO-C natural gas price $/MMBtu
+    south_central_limit_mw: float | None = None  # Override corridor limit (default 2800 MW)
+    central_north_limit_mw: float | None = None  # Override N-S limit (default 1400 MW)
+    bc_import_mw: float | None  = None       # Override BC import cap (default 1200 MW)
+    south_wind_bonus_pct: float = 0.0        # % extra wind capacity in SOUTH zone
+
+
+class AesoSensitivityRequest(BaseModel):
+    param: str = "wind_cf"          # Parameter to sweep
+    values: list[float] | None = None
+    fixed: dict | None = None
+
+
+_aeso_opf_cache: dict | None = None
+
+
+@app.get("/aeso/topology")
+def aeso_topology():
+    """Return 3-node Alberta network topology (buses, lines, generator summaries)."""
+    from aeso_network import get_topology
+    return get_topology()
+
+
+@app.post("/aeso/opf")
+def aeso_opf(req: AesoOPFRequest):
+    """Run DC OPF on the 3-node Alberta network. Returns nodal LMPs, line flows, dispatch, curtailment."""
+    from aeso_network import run_opf as _run_aeso_opf
+    try:
+        result = _run_aeso_opf(
+            system_load_mw=req.system_load_mw,
+            wind_cf=req.wind_cf,
+            solar_cf=req.solar_cf,
+            gas_price_mmbtu=req.gas_price_mmbtu,
+            south_central_limit_mw=req.south_central_limit_mw,
+            central_north_limit_mw=req.central_north_limit_mw,
+            bc_import_mw=req.bc_import_mw,
+            south_wind_bonus_pct=req.south_wind_bonus_pct,
+        )
+        if "error" in result:
+            raise HTTPException(status_code=422, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("AESO OPF failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/aeso/opf/default")
+def aeso_opf_default():
+    """Return cached default Alberta OPF result (high-wind, mid-load scenario)."""
+    if _aeso_opf_cache:
+        return _aeso_opf_cache
+    from aeso_network import run_opf as _run_aeso_opf
+    return _run_aeso_opf(wind_cf=0.55, solar_cf=0.25, system_load_mw=10500.0)
+
+
+@app.post("/aeso/sensitivity")
+def aeso_sensitivity(req: AesoSensitivityRequest):
+    """
+    Sweep a single input parameter and return LMP/congestion/curtailment curves.
+
+    param options: wind_cf | solar_cf | gas_price_mmbtu | system_load_mw | south_central_limit_mw
+    """
+    from aeso_network import run_sensitivity
+    try:
+        result = run_sensitivity(
+            param=req.param,
+            values=req.values,
+            fixed=req.fixed,
+        )
+        return result
+    except Exception as e:
+        logger.error("AESO sensitivity failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.on_event("startup")
+async def aeso_startup():
+    """Pre-compute default Alberta OPF at startup."""
+    global _aeso_opf_cache
+    try:
+        from aeso_network import run_opf as _run_aeso_opf
+        logger.info("Pre-computing Alberta OPF (high-wind scenario)...")
+        _aeso_opf_cache = _run_aeso_opf(wind_cf=0.55, solar_cf=0.25, system_load_mw=10500.0)
+        logger.info(
+            "Alberta OPF ready — SOUTH LMP $%.2f, CENTRAL LMP $%.2f, spread $%.2f",
+            _aeso_opf_cache.get("lmp_south", 0),
+            _aeso_opf_cache.get("lmp_central", 0),
+            _aeso_opf_cache.get("south_central_spread_cad_mwh", 0),
+        )
+    except Exception as e:
+        logger.warning("Alberta startup OPF failed (non-fatal): %s", e)
 
 
 if __name__ == "__main__":

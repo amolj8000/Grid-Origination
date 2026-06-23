@@ -26,6 +26,7 @@
     "seed-candidates": "tsx ./src/seed-candidates.ts",
     "seed-transmission-lines": "tsx ./src/seed-transmission-lines.ts",
     "seed-aeso-data": "tsx ./src/seed-aeso-data.ts",
+    "seed-aeso-real": "tsx ./src/seed-aeso-real.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

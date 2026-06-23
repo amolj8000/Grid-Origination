@@ -16,3 +16,5 @@
 - [Transmission lines geometry crash](tx-lines-geometry.md) — HIFLD mixes MultiLineString (3-D coord array) stored with "LineString" type; detectGeomType() in energy_stats.ts + flatten in map.tsx fetch handler prevents Leaflet renderer crash.
 - [Commissioning year data gap](commissioning-year.md) — candidates-seed.csv has no operating_year column; DB populated via technology-based SQL UPDATE (realistic vintage ranges by asset_type); for real data, regenerate CSV from EIA 860 with "Operating Year" field included.
 - [AESO Platform](aeso-platform.md) — standalone artifact at /aeso/; 9 DB tables, 16 API endpoints, 8 pages; pool price ~21k rows Jan2024-May2026; db.execute() returns {rows:[]} not iterable array.
+- [AESO Real Data Seeder](aeso-real-data-seeder.md) — all 9 apimgw.aeso.ca endpoints confirmed; seed-aeso-real script ready; requires AESO_API_KEY secret; datetime format is "MM/DD/YYYY HE##".
+- [Alberta 3-node PyPSA OPF](aeso-pypsa-alberta.md) — /pypsa/aeso/* endpoints live; SOUTH-CENTRAL congests at wind_cf ≥ 0.7; use net.buses_t.marginal_price.empty to detect infeasibility (no termination_condition attr).
