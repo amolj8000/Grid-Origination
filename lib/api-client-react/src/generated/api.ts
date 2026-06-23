@@ -23,11 +23,13 @@ import type {
   AesoDashboard,
   AesoGenerationMonthlyStat,
   AesoGenerationRow,
+  AesoInterchangeStat,
   AesoMonthlyPriceStat,
   AesoOutageRow,
   AesoPoolPriceRow,
   AesoQueueProject,
   AesoQueueSummary,
+  AesoSmpStat,
   AesoSupplyDemandMonthlyStat,
   AesoSupplyDemandRow,
   AesoTransmissionCorridor,
@@ -41,10 +43,12 @@ import type {
   GetAesoActualForecastParams,
   GetAesoConstraintsParams,
   GetAesoGenerationParams,
+  GetAesoInterchangeParams,
   GetAesoOutagesParams,
   GetAesoPoolPriceParams,
   GetAesoPoolPriceSpikesParams,
   GetAesoQueueParams,
+  GetAesoSmpParams,
   GetAesoSupplyDemandParams,
   GetTopCandidatesParams,
   HealthStatus,
@@ -3373,6 +3377,197 @@ export function useGetAesoTransmissionCorridors<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAesoTransmissionCorridorsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary System marginal price monthly history (congestion rent)
+ */
+export const getGetAesoSmpUrl = (params?: GetAesoSmpParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/smp?${stringifiedParams}`
+    : `/api/aeso/smp`;
+};
+
+export const getAesoSmp = async (
+  params?: GetAesoSmpParams,
+  options?: RequestInit,
+): Promise<AesoSmpStat[]> => {
+  return customFetch<AesoSmpStat[]>(getGetAesoSmpUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoSmpQueryKey = (params?: GetAesoSmpParams) => {
+  return [`/api/aeso/smp`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoSmpQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoSmp>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoSmpParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoSmp>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAesoSmpQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAesoSmp>>> = ({
+    signal,
+  }) => getAesoSmp(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoSmp>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoSmpQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoSmp>>
+>;
+export type GetAesoSmpQueryError = ErrorType<unknown>;
+
+/**
+ * @summary System marginal price monthly history (congestion rent)
+ */
+
+export function useGetAesoSmp<
+  TData = Awaited<ReturnType<typeof getAesoSmp>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoSmpParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoSmp>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoSmpQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary BC/SK intertie actual and scheduled flows by month
+ */
+export const getGetAesoInterchangeUrl = (params?: GetAesoInterchangeParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/interchange?${stringifiedParams}`
+    : `/api/aeso/interchange`;
+};
+
+export const getAesoInterchange = async (
+  params?: GetAesoInterchangeParams,
+  options?: RequestInit,
+): Promise<AesoInterchangeStat[]> => {
+  return customFetch<AesoInterchangeStat[]>(getGetAesoInterchangeUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoInterchangeQueryKey = (
+  params?: GetAesoInterchangeParams,
+) => {
+  return [`/api/aeso/interchange`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoInterchangeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoInterchange>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoInterchangeParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoInterchange>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoInterchangeQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoInterchange>>
+  > = ({ signal }) => getAesoInterchange(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoInterchange>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoInterchangeQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoInterchange>>
+>;
+export type GetAesoInterchangeQueryError = ErrorType<unknown>;
+
+/**
+ * @summary BC/SK intertie actual and scheduled flows by month
+ */
+
+export function useGetAesoInterchange<
+  TData = Awaited<ReturnType<typeof getAesoInterchange>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoInterchangeParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoInterchange>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoInterchangeQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

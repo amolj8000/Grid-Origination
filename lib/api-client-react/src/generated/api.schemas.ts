@@ -580,6 +580,32 @@ export interface AesoActualForecastRow {
   source?: string | null;
 }
 
+export interface AesoSmpStat {
+  month: string;
+  /** @nullable */
+  avgConstrained?: number | null;
+  /** @nullable */
+  avgUnconstrained?: number | null;
+  /** @nullable */
+  avgSpread?: number | null;
+  /** @nullable */
+  maxSpread?: number | null;
+  hours: number;
+}
+
+export interface AesoInterchangeStat {
+  month: string;
+  intertieOrFlowgate: string;
+  /** @nullable */
+  avgActualMw?: number | null;
+  /** @nullable */
+  avgScheduledMw?: number | null;
+  /** @nullable */
+  maxActualMw?: number | null;
+  /** @nullable */
+  minActualMw?: number | null;
+}
+
 export interface AesoTransmissionCorridor {
   id: number;
   corridorName: string;
@@ -804,4 +830,14 @@ export type GetAesoActualForecastParams = {
   from?: string;
   to?: string;
   limit?: number;
+};
+
+export type GetAesoSmpParams = {
+  from?: string;
+  to?: string;
+};
+
+export type GetAesoInterchangeParams = {
+  from?: string;
+  to?: string;
 };

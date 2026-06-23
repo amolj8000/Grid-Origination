@@ -833,6 +833,42 @@ paths:
                   $ref: "#/components/schemas/AesoTransmissionCorridor"
 
 
+  /aeso/smp:
+    get:
+      operationId: getAesoSmp
+      tags: [aeso]
+      summary: System marginal price monthly history (congestion rent)
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to,   in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Monthly SMP stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoSmpStat"
+
+  /aeso/interchange:
+    get:
+      operationId: getAesoInterchange
+      tags: [aeso]
+      summary: BC/SK intertie actual and scheduled flows by month
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to,   in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Monthly interchange summary
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoInterchangeStat"
+
 components:
   schemas:
     HealthStatus:
@@ -1509,6 +1545,28 @@ components:
         solarForecastErrorMw: { type: ["number", "null"] }
         source: { type: ["string", "null"] }
       required: [id, date, hourEnding]
+
+    AesoSmpStat:
+      type: object
+      properties:
+        month:            { type: string }
+        avgConstrained:   { type: ["number", "null"] }
+        avgUnconstrained: { type: ["number", "null"] }
+        avgSpread:        { type: ["number", "null"] }
+        maxSpread:        { type: ["number", "null"] }
+        hours:            { type: integer }
+      required: [month, hours]
+
+    AesoInterchangeStat:
+      type: object
+      properties:
+        month:              { type: string }
+        intertieOrFlowgate: { type: string }
+        avgActualMw:        { type: ["number", "null"] }
+        avgScheduledMw:     { type: ["number", "null"] }
+        maxActualMw:        { type: ["number", "null"] }
+        minActualMw:        { type: ["number", "null"] }
+      required: [month, intertieOrFlowgate]
 
     AesoTransmissionCorridor:
       type: object

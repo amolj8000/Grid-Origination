@@ -1106,3 +1106,41 @@ export const GetAesoTransmissionCorridorsResponseItem = zod.object({
 export const GetAesoTransmissionCorridorsResponse = zod.array(
   GetAesoTransmissionCorridorsResponseItem,
 );
+
+/**
+ * @summary System marginal price monthly history (congestion rent)
+ */
+export const GetAesoSmpQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+});
+
+export const GetAesoSmpResponseItem = zod.object({
+  month: zod.string(),
+  avgConstrained: zod.number().nullish(),
+  avgUnconstrained: zod.number().nullish(),
+  avgSpread: zod.number().nullish(),
+  maxSpread: zod.number().nullish(),
+  hours: zod.number(),
+});
+export const GetAesoSmpResponse = zod.array(GetAesoSmpResponseItem);
+
+/**
+ * @summary BC/SK intertie actual and scheduled flows by month
+ */
+export const GetAesoInterchangeQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+});
+
+export const GetAesoInterchangeResponseItem = zod.object({
+  month: zod.string(),
+  intertieOrFlowgate: zod.string(),
+  avgActualMw: zod.number().nullish(),
+  avgScheduledMw: zod.number().nullish(),
+  maxActualMw: zod.number().nullish(),
+  minActualMw: zod.number().nullish(),
+});
+export const GetAesoInterchangeResponse = zod.array(
+  GetAesoInterchangeResponseItem,
+);

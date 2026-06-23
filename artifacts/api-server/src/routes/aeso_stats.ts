@@ -677,4 +677,73 @@ router.get("/aeso/transmission-corridors", async (req, res) => {
   }
 });
 
+// SMP — system marginal price monthly history
+router.get("/aeso/smp", async (req, res) => {
+  try {
+    const { from, to } = req.query as Record<string, string | undefined>;
+    const rows = await db.execute<{
+      month: string; avg_constrained: string | null; avg_unconstrained: string | null;
+      avg_spread: string | null; max_spread: string | null; hours: string;
+    }>(sql`
+      SELECT DATE_TRUNC('month', date)::date::text AS month,
+             AVG(constrained_price)::text   AS avg_constrained,
+             AVG(unconstrained_price)::text AS avg_unconstrained,
+             AVG(spread)::text              AS avg_spread,
+             MAX(spread)::text              AS max_spread,
+             COUNT(*)::text                 AS hours
+      FROM aeso_smp
+      WHERE (${from ?? null}::date IS NULL OR date >= ${from ?? null}::date)
+        AND (${to   ?? null}::date IS NULL OR date <= ${to   ?? null}::date)
+      GROUP BY DATE_TRUNC('month', date)
+      ORDER BY DATE_TRUNC('month', date)
+    `);
+    res.json(rows.rows.map(r => ({
+      month:            r.month,
+      avgConstrained:   r.avg_constrained   ? parseFloat(r.avg_constrained)   : null,
+      avgUnconstrained: r.avg_unconstrained ? parseFloat(r.avg_unconstrained) : null,
+      avgSpread:        r.avg_spread        ? parseFloat(r.avg_spread)        : null,
+      maxSpread:        r.max_spread        ? parseFloat(r.max_spread)        : null,
+      hours:            parseInt(r.hours, 10),
+    })));
+  } catch (err) {
+    req.log.error({ err }, "getAesoSmp error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// Interchange — BC/SK actual + scheduled flows by month
+router.get("/aeso/interchange", async (req, res) => {
+  try {
+    const { from, to } = req.query as Record<string, string | undefined>;
+    const rows = await db.execute<{
+      month: string; intertie_or_flowgate: string;
+      avg_actual_mw: string | null; avg_scheduled_mw: string | null;
+      max_actual_mw: string | null; min_actual_mw: string | null;
+    }>(sql`
+      SELECT DATE_TRUNC('month', date)::date::text AS month,
+             intertie_or_flowgate,
+             AVG(actual_mw)::text     AS avg_actual_mw,
+             AVG(scheduled_mw)::text  AS avg_scheduled_mw,
+             MAX(actual_mw)::text     AS max_actual_mw,
+             MIN(actual_mw)::text     AS min_actual_mw
+      FROM aeso_interchange
+      WHERE (${from ?? null}::date IS NULL OR date >= ${from ?? null}::date)
+        AND (${to   ?? null}::date IS NULL OR date <= ${to   ?? null}::date)
+      GROUP BY DATE_TRUNC('month', date), intertie_or_flowgate
+      ORDER BY DATE_TRUNC('month', date), intertie_or_flowgate
+    `);
+    res.json(rows.rows.map(r => ({
+      month:               r.month,
+      intertieOrFlowgate:  r.intertie_or_flowgate,
+      avgActualMw:         r.avg_actual_mw     ? parseFloat(r.avg_actual_mw)     : null,
+      avgScheduledMw:      r.avg_scheduled_mw  ? parseFloat(r.avg_scheduled_mw)  : null,
+      maxActualMw:         r.max_actual_mw     ? parseFloat(r.max_actual_mw)     : null,
+      minActualMw:         r.min_actual_mw     ? parseFloat(r.min_actual_mw)     : null,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "getAesoInterchange error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 export default router;
