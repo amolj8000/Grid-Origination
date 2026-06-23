@@ -653,6 +653,107 @@ async function seedPoolParticipants(): Promise<void> {
   }
 }
 
+// ─── 9. Energy Merit Order (supply stack) ────────────────────────────────────
+// Pulls last 90 days (data is large — one row per offer block per generator per hour)
+
+async function seedMeritOrder(): Promise<void> {
+  console.log("\n📋 Seeding energy merit order / supply stack (last 90 days)...");
+  const today = new Date();
+  const start = offsetDate(today, -90);
+
+  // Pull in 7-day chunks to stay under response size limits
+  const chunks: Array<{ s: string; e: string }> = [];
+  let cur = new Date(start);
+  while (cur < today) {
+    const next = offsetDate(cur, 7);
+    const e = next > today ? today : next;
+    chunks.push({ s: cur.toISOString().slice(0, 10), e: e.toISOString().slice(0, 10) });
+    cur = next;
+  }
+
+  let total = 0;
+  for (const { s } of chunks) {
+    try {
+      const data = await aFetch("energymeritorder-api/v1/meritOrder/energy", {
+        startDate: s,
+      }) as Record<string, unknown>;
+
+      const ret = (data as Record<string, Record<string, unknown[]>>)?.return ?? {};
+      const rows: Record<string, unknown>[] = [];
+      for (const v of Object.values(ret)) {
+        if (Array.isArray(v)) rows.push(...v as Record<string, unknown>[]);
+      }
+
+      if (rows.length === 0) {
+        console.log(`  ⚠️  MeritOrder ${s}: empty`);
+        await sleep(DELAY_MS);
+        continue;
+      }
+
+      // Build cumulative MW per hour as we process rows in merit order
+      const hourCumulative: Record<string, number> = {};
+
+      const CHUNK = 500;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK) as Record<string, unknown>[];
+        const values = chunk.map((r: Record<string, unknown>) => {
+          const dtStr = String(r["begin_datetime_mpt"] ?? r["datetime_mpt"] ?? "");
+          let dt: { date: string; hourEnding: number };
+          try { dt = parseAesoDatetime(dtStr); }
+          catch { return null; }
+
+          const hourKey = `${dt.date}-${dt.hourEnding}`;
+          const blockMw = safeFloat(r["block_mw"] ?? r["offer_quantity_mw"] ?? r["quantity_mw"]) ?? 0;
+          hourCumulative[hourKey] = (hourCumulative[hourKey] ?? 0) + blockMw;
+          const cumMw = hourCumulative[hourKey];
+
+          const rank = parseInt(String(r["merit_order_rank"] ?? r["rank"] ?? "0"), 10) || null;
+          const assetId = String(r["asset_ID"] ?? r["asset_id"] ?? "").replace(/'/g, "''");
+          const assetName = String(r["asset_name"] ?? "").replace(/'/g, "''");
+          const ppId = String(r["pool_participant_ID"] ?? r["pool_participant_id"] ?? "").replace(/'/g, "''");
+          const fuelType = String(r["fuel_type"] ?? r["fuelType"] ?? "").replace(/'/g, "''");
+          const offerPrice = safeFloat(r["offer_price"] ?? r["price"] ?? r["energy_price"]);
+          const dispatchedMw = safeFloat(r["dispatched_mw"] ?? r["dispatch_mw"] ?? r["actual_mw"]);
+          const isMarginal = String(r["marginal_ind"] ?? r["is_marginal"] ?? "0") === "1" ? "true" : "false";
+
+          return `(
+            '${dt.date}', ${dt.hourEnding},
+            ${rank ?? "NULL"},
+            '${assetId}', '${assetName}', '${ppId}', '${fuelType}',
+            ${blockMw || "NULL"},
+            ${offerPrice ?? "NULL"},
+            ${dispatchedMw ?? "NULL"},
+            ${cumMw},
+            ${isMarginal}
+          )`;
+        }).filter(Boolean).join(",\n");
+
+        if (values) {
+          await db.execute(sql.raw(`
+            INSERT INTO aeso_merit_order
+              (date, hour_ending, merit_order_rank, asset_id, asset_name,
+               pool_participant_id, fuel_type, block_mw, offer_price,
+               dispatched_mw, cumulative_mw, is_marginal)
+            VALUES ${values}
+            ON CONFLICT (date, hour_ending, asset_id, merit_order_rank) DO UPDATE SET
+              block_mw      = EXCLUDED.block_mw,
+              offer_price   = EXCLUDED.offer_price,
+              dispatched_mw = EXCLUDED.dispatched_mw,
+              cumulative_mw = EXCLUDED.cumulative_mw,
+              is_marginal   = EXCLUDED.is_marginal
+          `));
+        }
+      }
+      total += rows.length;
+      console.log(`  ✓ MeritOrder ${s}: ${rows.length} rows`);
+    } catch (e2: unknown) {
+      console.error(`  ❌ MeritOrder ${s}: ${(e2 as Error).message}`);
+    }
+    await sleep(DELAY_MS);
+  }
+  console.log(`  MeritOrder total: ${total} rows`);
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -671,6 +772,7 @@ async function main(): Promise<void> {
   await seedMeteredVolume();
   await seedAssetList();
   await seedPoolParticipants();
+  await seedMeritOrder();
 
   console.log("\n✅ AESO real data seeding complete!");
   process.exit(0);

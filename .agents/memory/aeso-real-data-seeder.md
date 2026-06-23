@@ -26,6 +26,7 @@ Register free: https://developer-apim.aeso.ca
 | Metered volume (generator-level) | `meteredvolume-api/v1/meteredvolume/details?startDate=&endDate=&asset_ID=&pool_participant_ID=` |
 | Asset list (AIES registry) | `assetlist-api/v1/assetlist?asset_ID=&pool_participant_ID=&operating_status=&asset_type=` |
 | Pool participants | `PoolParticipant-api/v1/poolparticipantlist?pool_participant_ID=&pool_participant_name=` |
+| Energy merit order / supply stack | `energymeritorder-api/v1/meritOrder/energy?startDate=` |
 | Current supply & demand (snapshot) | `currentsupplydemand-api/v2/csd/summary/current` |
 
 ## DB tables written to
@@ -37,6 +38,7 @@ Register free: https://developer-apim.aeso.ca
 - `aeso_metered_volume` — new table (generator-level)
 - `aeso_asset_registry` — new table
 - `aeso_pool_participants` — new table
+- `aeso_merit_order` — new table (offer blocks per generator per hour; cumulative_mw + is_marginal columns)
 
 ## Date range
 - Pool price, AIL, gen capacity, op reserve: Jan 2024 → today, by month chunks (gap-fill)
