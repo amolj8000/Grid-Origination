@@ -17,6 +17,20 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  Aeso7dayCapabilityRow,
+  AesoActualForecastRow,
+  AesoConstraintRow,
+  AesoDashboard,
+  AesoGenerationMonthlyStat,
+  AesoGenerationRow,
+  AesoMonthlyPriceStat,
+  AesoOutageRow,
+  AesoPoolPriceRow,
+  AesoQueueProject,
+  AesoQueueSummary,
+  AesoSupplyDemandMonthlyStat,
+  AesoSupplyDemandRow,
+  AesoTransmissionCorridor,
   CaisoNodeStats,
   Candidate,
   CandidateInput,
@@ -24,6 +38,14 @@ import type {
   ErcotNodalStats,
   ErcotNodeStats,
   ErrorResponse,
+  GetAesoActualForecastParams,
+  GetAesoConstraintsParams,
+  GetAesoGenerationParams,
+  GetAesoOutagesParams,
+  GetAesoPoolPriceParams,
+  GetAesoPoolPriceSpikesParams,
+  GetAesoQueueParams,
+  GetAesoSupplyDemandParams,
   GetTopCandidatesParams,
   HealthStatus,
   ListCaisoNodeStatsParams,
@@ -1955,6 +1977,1402 @@ export function useGetQueueSummary<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetQueueSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary AESO dashboard summary
+ */
+export const getGetAesoDashboardUrl = () => {
+  return `/api/aeso/dashboard`;
+};
+
+export const getAesoDashboard = async (
+  options?: RequestInit,
+): Promise<AesoDashboard> => {
+  return customFetch<AesoDashboard>(getGetAesoDashboardUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoDashboardQueryKey = () => {
+  return [`/api/aeso/dashboard`] as const;
+};
+
+export const getGetAesoDashboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoDashboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAesoDashboardQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoDashboard>>
+  > = ({ signal }) => getAesoDashboard({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoDashboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoDashboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoDashboard>>
+>;
+export type GetAesoDashboardQueryError = ErrorType<unknown>;
+
+/**
+ * @summary AESO dashboard summary
+ */
+
+export function useGetAesoDashboard<
+  TData = Awaited<ReturnType<typeof getAesoDashboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoDashboardQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Pool price time series
+ */
+export const getGetAesoPoolPriceUrl = (params?: GetAesoPoolPriceParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/pool-price?${stringifiedParams}`
+    : `/api/aeso/pool-price`;
+};
+
+export const getAesoPoolPrice = async (
+  params?: GetAesoPoolPriceParams,
+  options?: RequestInit,
+): Promise<AesoPoolPriceRow[]> => {
+  return customFetch<AesoPoolPriceRow[]>(getGetAesoPoolPriceUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoPoolPriceQueryKey = (
+  params?: GetAesoPoolPriceParams,
+) => {
+  return [`/api/aeso/pool-price`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoPoolPriceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoPoolPrice>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoPoolPriceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoPoolPrice>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoPoolPriceQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoPoolPrice>>
+  > = ({ signal }) => getAesoPoolPrice(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoPoolPrice>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoPoolPriceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoPoolPrice>>
+>;
+export type GetAesoPoolPriceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Pool price time series
+ */
+
+export function useGetAesoPoolPrice<
+  TData = Awaited<ReturnType<typeof getAesoPoolPrice>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoPoolPriceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoPoolPrice>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoPoolPriceQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Monthly pool price statistics
+ */
+export const getGetAesoPoolPriceStatsUrl = () => {
+  return `/api/aeso/pool-price/stats`;
+};
+
+export const getAesoPoolPriceStats = async (
+  options?: RequestInit,
+): Promise<AesoMonthlyPriceStat[]> => {
+  return customFetch<AesoMonthlyPriceStat[]>(getGetAesoPoolPriceStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoPoolPriceStatsQueryKey = () => {
+  return [`/api/aeso/pool-price/stats`] as const;
+};
+
+export const getGetAesoPoolPriceStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoPoolPriceStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoPoolPriceStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAesoPoolPriceStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoPoolPriceStats>>
+  > = ({ signal }) => getAesoPoolPriceStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoPoolPriceStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoPoolPriceStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoPoolPriceStats>>
+>;
+export type GetAesoPoolPriceStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Monthly pool price statistics
+ */
+
+export function useGetAesoPoolPriceStats<
+  TData = Awaited<ReturnType<typeof getAesoPoolPriceStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoPoolPriceStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoPoolPriceStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Pool price spike events (price >= threshold)
+ */
+export const getGetAesoPoolPriceSpikesUrl = (
+  params?: GetAesoPoolPriceSpikesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/pool-price/spikes?${stringifiedParams}`
+    : `/api/aeso/pool-price/spikes`;
+};
+
+export const getAesoPoolPriceSpikes = async (
+  params?: GetAesoPoolPriceSpikesParams,
+  options?: RequestInit,
+): Promise<AesoPoolPriceRow[]> => {
+  return customFetch<AesoPoolPriceRow[]>(getGetAesoPoolPriceSpikesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoPoolPriceSpikesQueryKey = (
+  params?: GetAesoPoolPriceSpikesParams,
+) => {
+  return [`/api/aeso/pool-price/spikes`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoPoolPriceSpikesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoPoolPriceSpikes>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoPoolPriceSpikesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoPoolPriceSpikes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoPoolPriceSpikesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoPoolPriceSpikes>>
+  > = ({ signal }) =>
+    getAesoPoolPriceSpikes(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoPoolPriceSpikes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoPoolPriceSpikesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoPoolPriceSpikes>>
+>;
+export type GetAesoPoolPriceSpikesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Pool price spike events (price >= threshold)
+ */
+
+export function useGetAesoPoolPriceSpikes<
+  TData = Awaited<ReturnType<typeof getAesoPoolPriceSpikes>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoPoolPriceSpikesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoPoolPriceSpikes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoPoolPriceSpikesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Hourly generation mix
+ */
+export const getGetAesoGenerationUrl = (params?: GetAesoGenerationParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/generation?${stringifiedParams}`
+    : `/api/aeso/generation`;
+};
+
+export const getAesoGeneration = async (
+  params?: GetAesoGenerationParams,
+  options?: RequestInit,
+): Promise<AesoGenerationRow[]> => {
+  return customFetch<AesoGenerationRow[]>(getGetAesoGenerationUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoGenerationQueryKey = (
+  params?: GetAesoGenerationParams,
+) => {
+  return [`/api/aeso/generation`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoGenerationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoGeneration>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoGenerationParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoGeneration>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoGenerationQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoGeneration>>
+  > = ({ signal }) => getAesoGeneration(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoGeneration>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoGenerationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoGeneration>>
+>;
+export type GetAesoGenerationQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Hourly generation mix
+ */
+
+export function useGetAesoGeneration<
+  TData = Awaited<ReturnType<typeof getAesoGeneration>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoGenerationParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoGeneration>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoGenerationQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Monthly generation mix aggregates
+ */
+export const getGetAesoGenerationMonthlyUrl = () => {
+  return `/api/aeso/generation/monthly`;
+};
+
+export const getAesoGenerationMonthly = async (
+  options?: RequestInit,
+): Promise<AesoGenerationMonthlyStat[]> => {
+  return customFetch<AesoGenerationMonthlyStat[]>(
+    getGetAesoGenerationMonthlyUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAesoGenerationMonthlyQueryKey = () => {
+  return [`/api/aeso/generation/monthly`] as const;
+};
+
+export const getGetAesoGenerationMonthlyQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoGenerationMonthly>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoGenerationMonthly>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoGenerationMonthlyQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoGenerationMonthly>>
+  > = ({ signal }) => getAesoGenerationMonthly({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoGenerationMonthly>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoGenerationMonthlyQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoGenerationMonthly>>
+>;
+export type GetAesoGenerationMonthlyQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Monthly generation mix aggregates
+ */
+
+export function useGetAesoGenerationMonthly<
+  TData = Awaited<ReturnType<typeof getAesoGenerationMonthly>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoGenerationMonthly>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoGenerationMonthlyQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Hourly supply and demand
+ */
+export const getGetAesoSupplyDemandUrl = (
+  params?: GetAesoSupplyDemandParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/supply-demand?${stringifiedParams}`
+    : `/api/aeso/supply-demand`;
+};
+
+export const getAesoSupplyDemand = async (
+  params?: GetAesoSupplyDemandParams,
+  options?: RequestInit,
+): Promise<AesoSupplyDemandRow[]> => {
+  return customFetch<AesoSupplyDemandRow[]>(getGetAesoSupplyDemandUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoSupplyDemandQueryKey = (
+  params?: GetAesoSupplyDemandParams,
+) => {
+  return [`/api/aeso/supply-demand`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoSupplyDemandQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoSupplyDemand>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoSupplyDemandParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoSupplyDemand>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoSupplyDemandQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoSupplyDemand>>
+  > = ({ signal }) =>
+    getAesoSupplyDemand(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoSupplyDemand>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoSupplyDemandQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoSupplyDemand>>
+>;
+export type GetAesoSupplyDemandQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Hourly supply and demand
+ */
+
+export function useGetAesoSupplyDemand<
+  TData = Awaited<ReturnType<typeof getAesoSupplyDemand>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoSupplyDemandParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoSupplyDemand>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoSupplyDemandQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Monthly supply/demand averages
+ */
+export const getGetAesoSupplyDemandStatsUrl = () => {
+  return `/api/aeso/supply-demand/stats`;
+};
+
+export const getAesoSupplyDemandStats = async (
+  options?: RequestInit,
+): Promise<AesoSupplyDemandMonthlyStat[]> => {
+  return customFetch<AesoSupplyDemandMonthlyStat[]>(
+    getGetAesoSupplyDemandStatsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAesoSupplyDemandStatsQueryKey = () => {
+  return [`/api/aeso/supply-demand/stats`] as const;
+};
+
+export const getGetAesoSupplyDemandStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoSupplyDemandStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoSupplyDemandStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoSupplyDemandStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoSupplyDemandStats>>
+  > = ({ signal }) => getAesoSupplyDemandStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoSupplyDemandStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoSupplyDemandStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoSupplyDemandStats>>
+>;
+export type GetAesoSupplyDemandStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Monthly supply/demand averages
+ */
+
+export function useGetAesoSupplyDemandStats<
+  TData = Awaited<ReturnType<typeof getAesoSupplyDemandStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoSupplyDemandStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoSupplyDemandStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Outage events
+ */
+export const getGetAesoOutagesUrl = (params?: GetAesoOutagesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/outages?${stringifiedParams}`
+    : `/api/aeso/outages`;
+};
+
+export const getAesoOutages = async (
+  params?: GetAesoOutagesParams,
+  options?: RequestInit,
+): Promise<AesoOutageRow[]> => {
+  return customFetch<AesoOutageRow[]>(getGetAesoOutagesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoOutagesQueryKey = (params?: GetAesoOutagesParams) => {
+  return [`/api/aeso/outages`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoOutagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoOutages>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoOutagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoOutages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAesoOutagesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAesoOutages>>> = ({
+    signal,
+  }) => getAesoOutages(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoOutages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoOutagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoOutages>>
+>;
+export type GetAesoOutagesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Outage events
+ */
+
+export function useGetAesoOutages<
+  TData = Awaited<ReturnType<typeof getAesoOutages>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoOutagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoOutages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoOutagesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Upcoming planned outages
+ */
+export const getGetAesoOutagesUpcomingUrl = () => {
+  return `/api/aeso/outages/upcoming`;
+};
+
+export const getAesoOutagesUpcoming = async (
+  options?: RequestInit,
+): Promise<AesoOutageRow[]> => {
+  return customFetch<AesoOutageRow[]>(getGetAesoOutagesUpcomingUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoOutagesUpcomingQueryKey = () => {
+  return [`/api/aeso/outages/upcoming`] as const;
+};
+
+export const getGetAesoOutagesUpcomingQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoOutagesUpcoming>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoOutagesUpcoming>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoOutagesUpcomingQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoOutagesUpcoming>>
+  > = ({ signal }) => getAesoOutagesUpcoming({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoOutagesUpcoming>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoOutagesUpcomingQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoOutagesUpcoming>>
+>;
+export type GetAesoOutagesUpcomingQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Upcoming planned outages
+ */
+
+export function useGetAesoOutagesUpcoming<
+  TData = Awaited<ReturnType<typeof getAesoOutagesUpcoming>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoOutagesUpcoming>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoOutagesUpcomingQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary 7-day generation capability forecast
+ */
+export const getGetAeso7dayCapabilityUrl = () => {
+  return `/api/aeso/7day-capability`;
+};
+
+export const getAeso7dayCapability = async (
+  options?: RequestInit,
+): Promise<Aeso7dayCapabilityRow[]> => {
+  return customFetch<Aeso7dayCapabilityRow[]>(getGetAeso7dayCapabilityUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAeso7dayCapabilityQueryKey = () => {
+  return [`/api/aeso/7day-capability`] as const;
+};
+
+export const getGetAeso7dayCapabilityQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAeso7dayCapability>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAeso7dayCapability>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAeso7dayCapabilityQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAeso7dayCapability>>
+  > = ({ signal }) => getAeso7dayCapability({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAeso7dayCapability>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAeso7dayCapabilityQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAeso7dayCapability>>
+>;
+export type GetAeso7dayCapabilityQueryError = ErrorType<unknown>;
+
+/**
+ * @summary 7-day generation capability forecast
+ */
+
+export function useGetAeso7dayCapability<
+  TData = Awaited<ReturnType<typeof getAeso7dayCapability>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAeso7dayCapability>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAeso7dayCapabilityQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary AESO interconnection queue projects
+ */
+export const getGetAesoQueueUrl = (params?: GetAesoQueueParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/queue?${stringifiedParams}`
+    : `/api/aeso/queue`;
+};
+
+export const getAesoQueue = async (
+  params?: GetAesoQueueParams,
+  options?: RequestInit,
+): Promise<AesoQueueProject[]> => {
+  return customFetch<AesoQueueProject[]>(getGetAesoQueueUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoQueueQueryKey = (params?: GetAesoQueueParams) => {
+  return [`/api/aeso/queue`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoQueueQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoQueue>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoQueue>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAesoQueueQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAesoQueue>>> = ({
+    signal,
+  }) => getAesoQueue(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoQueue>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoQueueQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoQueue>>
+>;
+export type GetAesoQueueQueryError = ErrorType<unknown>;
+
+/**
+ * @summary AESO interconnection queue projects
+ */
+
+export function useGetAesoQueue<
+  TData = Awaited<ReturnType<typeof getAesoQueue>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoQueue>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoQueueQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary AESO queue summary statistics
+ */
+export const getGetAesoQueueStatsUrl = () => {
+  return `/api/aeso/queue/stats`;
+};
+
+export const getAesoQueueStats = async (
+  options?: RequestInit,
+): Promise<AesoQueueSummary> => {
+  return customFetch<AesoQueueSummary>(getGetAesoQueueStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoQueueStatsQueryKey = () => {
+  return [`/api/aeso/queue/stats`] as const;
+};
+
+export const getGetAesoQueueStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoQueueStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoQueueStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAesoQueueStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoQueueStats>>
+  > = ({ signal }) => getAesoQueueStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoQueueStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoQueueStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoQueueStats>>
+>;
+export type GetAesoQueueStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary AESO queue summary statistics
+ */
+
+export function useGetAesoQueueStats<
+  TData = Awaited<ReturnType<typeof getAesoQueueStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoQueueStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoQueueStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Constraint events
+ */
+export const getGetAesoConstraintsUrl = (params?: GetAesoConstraintsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/constraints?${stringifiedParams}`
+    : `/api/aeso/constraints`;
+};
+
+export const getAesoConstraints = async (
+  params?: GetAesoConstraintsParams,
+  options?: RequestInit,
+): Promise<AesoConstraintRow[]> => {
+  return customFetch<AesoConstraintRow[]>(getGetAesoConstraintsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAesoConstraintsQueryKey = (
+  params?: GetAesoConstraintsParams,
+) => {
+  return [`/api/aeso/constraints`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoConstraintsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoConstraints>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoConstraintsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoConstraints>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoConstraintsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoConstraints>>
+  > = ({ signal }) => getAesoConstraints(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoConstraints>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoConstraintsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoConstraints>>
+>;
+export type GetAesoConstraintsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Constraint events
+ */
+
+export function useGetAesoConstraints<
+  TData = Awaited<ReturnType<typeof getAesoConstraints>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoConstraintsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoConstraints>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoConstraintsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Actual vs forecast comparison
+ */
+export const getGetAesoActualForecastUrl = (
+  params?: GetAesoActualForecastParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aeso/actual-forecast?${stringifiedParams}`
+    : `/api/aeso/actual-forecast`;
+};
+
+export const getAesoActualForecast = async (
+  params?: GetAesoActualForecastParams,
+  options?: RequestInit,
+): Promise<AesoActualForecastRow[]> => {
+  return customFetch<AesoActualForecastRow[]>(
+    getGetAesoActualForecastUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAesoActualForecastQueryKey = (
+  params?: GetAesoActualForecastParams,
+) => {
+  return [`/api/aeso/actual-forecast`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAesoActualForecastQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoActualForecast>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoActualForecastParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoActualForecast>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoActualForecastQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoActualForecast>>
+  > = ({ signal }) =>
+    getAesoActualForecast(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoActualForecast>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoActualForecastQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoActualForecast>>
+>;
+export type GetAesoActualForecastQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Actual vs forecast comparison
+ */
+
+export function useGetAesoActualForecast<
+  TData = Awaited<ReturnType<typeof getAesoActualForecast>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAesoActualForecastParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAesoActualForecast>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoActualForecastQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Transmission corridor ratings and congestion
+ */
+export const getGetAesoTransmissionCorridorsUrl = () => {
+  return `/api/aeso/transmission-corridors`;
+};
+
+export const getAesoTransmissionCorridors = async (
+  options?: RequestInit,
+): Promise<AesoTransmissionCorridor[]> => {
+  return customFetch<AesoTransmissionCorridor[]>(
+    getGetAesoTransmissionCorridorsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAesoTransmissionCorridorsQueryKey = () => {
+  return [`/api/aeso/transmission-corridors`] as const;
+};
+
+export const getGetAesoTransmissionCorridorsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAesoTransmissionCorridors>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoTransmissionCorridors>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAesoTransmissionCorridorsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAesoTransmissionCorridors>>
+  > = ({ signal }) =>
+    getAesoTransmissionCorridors({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoTransmissionCorridors>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAesoTransmissionCorridorsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAesoTransmissionCorridors>>
+>;
+export type GetAesoTransmissionCorridorsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Transmission corridor ratings and congestion
+ */
+
+export function useGetAesoTransmissionCorridors<
+  TData = Awaited<ReturnType<typeof getAesoTransmissionCorridors>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAesoTransmissionCorridors>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAesoTransmissionCorridorsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

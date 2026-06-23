@@ -8,6 +8,7 @@ import dashboardRouter from "./dashboard";
 import chatRouter from "./chat";
 import congestionIntelRouter from "./congestion_intel";
 import adminRouter from "./admin";
+import aesoStatsRouter from "./aeso_stats";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(dashboardRouter);
 router.use(chatRouter);
 router.use(congestionIntelRouter);
 router.use(adminRouter);
+router.use(aesoStatsRouter);
 
 export default router;

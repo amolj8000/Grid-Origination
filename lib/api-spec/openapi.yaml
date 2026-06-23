@@ -26,6 +26,8 @@ tags:
     description: Interconnection queue projects
   - name: dashboard
     description: Dashboard summary endpoints
+  - name: aeso
+    description: AESO Alberta power market endpoints
 
 paths:
   /healthz:
@@ -511,6 +513,326 @@ paths:
               schema:
                 $ref: "#/components/schemas/QueueSummary"
 
+  /aeso/dashboard:
+    get:
+      operationId: getAesoDashboard
+      tags: [aeso]
+      summary: AESO dashboard summary
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AesoDashboard"
+
+  /aeso/pool-price:
+    get:
+      operationId: getAesoPoolPrice
+      tags: [aeso]
+      summary: Pool price time series
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string }
+        - name: to
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Pool price hourly rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoPoolPriceRow"
+
+  /aeso/pool-price/stats:
+    get:
+      operationId: getAesoPoolPriceStats
+      tags: [aeso]
+      summary: Monthly pool price statistics
+      responses:
+        "200":
+          description: Monthly stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoMonthlyPriceStat"
+
+  /aeso/pool-price/spikes:
+    get:
+      operationId: getAesoPoolPriceSpikes
+      tags: [aeso]
+      summary: Pool price spike events (price >= threshold)
+      parameters:
+        - name: threshold
+          in: query
+          schema: { type: number }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Spike events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoPoolPriceRow"
+
+  /aeso/generation:
+    get:
+      operationId: getAesoGeneration
+      tags: [aeso]
+      summary: Hourly generation mix
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string }
+        - name: to
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Hourly generation mix rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoGenerationRow"
+
+  /aeso/generation/monthly:
+    get:
+      operationId: getAesoGenerationMonthly
+      tags: [aeso]
+      summary: Monthly generation mix aggregates
+      responses:
+        "200":
+          description: Monthly aggregates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoGenerationMonthlyStat"
+
+  /aeso/supply-demand:
+    get:
+      operationId: getAesoSupplyDemand
+      tags: [aeso]
+      summary: Hourly supply and demand
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string }
+        - name: to
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Hourly supply/demand rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoSupplyDemandRow"
+
+  /aeso/supply-demand/stats:
+    get:
+      operationId: getAesoSupplyDemandStats
+      tags: [aeso]
+      summary: Monthly supply/demand averages
+      responses:
+        "200":
+          description: Monthly supply/demand stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoSupplyDemandMonthlyStat"
+
+  /aeso/outages:
+    get:
+      operationId: getAesoOutages
+      tags: [aeso]
+      summary: Outage events
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string }
+        - name: to
+          in: query
+          schema: { type: string }
+        - name: fuelType
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Outage list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoOutageRow"
+
+  /aeso/outages/upcoming:
+    get:
+      operationId: getAesoOutagesUpcoming
+      tags: [aeso]
+      summary: Upcoming planned outages
+      responses:
+        "200":
+          description: Upcoming outages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoOutageRow"
+
+  /aeso/7day-capability:
+    get:
+      operationId: getAeso7dayCapability
+      tags: [aeso]
+      summary: 7-day generation capability forecast
+      responses:
+        "200":
+          description: 7-day capability rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Aeso7dayCapabilityRow"
+
+  /aeso/queue:
+    get:
+      operationId: getAesoQueue
+      tags: [aeso]
+      summary: AESO interconnection queue projects
+      parameters:
+        - name: fuelType
+          in: query
+          schema: { type: string }
+        - name: region
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Queue project list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoQueueProject"
+
+  /aeso/queue/stats:
+    get:
+      operationId: getAesoQueueStats
+      tags: [aeso]
+      summary: AESO queue summary statistics
+      responses:
+        "200":
+          description: Queue stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AesoQueueSummary"
+
+  /aeso/constraints:
+    get:
+      operationId: getAesoConstraints
+      tags: [aeso]
+      summary: Constraint events
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string }
+        - name: to
+          in: query
+          schema: { type: string }
+        - name: corridor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Constraint events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoConstraintRow"
+
+  /aeso/actual-forecast:
+    get:
+      operationId: getAesoActualForecast
+      tags: [aeso]
+      summary: Actual vs forecast comparison
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string }
+        - name: to
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Actual vs forecast rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoActualForecastRow"
+
+  /aeso/transmission-corridors:
+    get:
+      operationId: getAesoTransmissionCorridors
+      tags: [aeso]
+      summary: Transmission corridor ratings and congestion
+      responses:
+        "200":
+          description: Corridor list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AesoTransmissionCorridor"
+
+
 components:
   schemas:
     HealthStatus:
@@ -988,3 +1310,236 @@ components:
                 type: number
             required: [market, count, totalCapacityMw]
       required: [byFuelType, byStatus, byMarket]
+
+    AesoPoolPriceRow:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string }
+        hourEnding: { type: integer }
+        poolPrice: { type: ["number", "null"] }
+        forecastPoolPrice: { type: ["number", "null"] }
+        ailMw: { type: ["number", "null"] }
+        netGenMw: { type: ["number", "null"] }
+      required: [id, date, hourEnding]
+
+    AesoMonthlyPriceStat:
+      type: object
+      properties:
+        year: { type: integer }
+        month: { type: integer }
+        avgPrice: { type: number }
+        minPrice: { type: number }
+        maxPrice: { type: number }
+        spikeCount: { type: integer }
+        negCount: { type: integer }
+        volatility: { type: number }
+      required: [year, month, avgPrice, minPrice, maxPrice, spikeCount, negCount, volatility]
+
+    AesoGenerationRow:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string }
+        hourEnding: { type: integer }
+        gasMw: { type: ["number", "null"] }
+        coalMw: { type: ["number", "null"] }
+        windMw: { type: ["number", "null"] }
+        solarMw: { type: ["number", "null"] }
+        hydroMw: { type: ["number", "null"] }
+        storageMw: { type: ["number", "null"] }
+        otherMw: { type: ["number", "null"] }
+        totalMw: { type: ["number", "null"] }
+      required: [id, date, hourEnding]
+
+    AesoGenerationMonthlyStat:
+      type: object
+      properties:
+        year: { type: integer }
+        month: { type: integer }
+        avgGasMw: { type: number }
+        avgWindMw: { type: number }
+        avgSolarMw: { type: number }
+        avgHydroMw: { type: number }
+        avgCoalMw: { type: number }
+        avgTotalMw: { type: number }
+        windPct: { type: number }
+        gasPct: { type: number }
+      required: [year, month, avgGasMw, avgWindMw, avgSolarMw, avgHydroMw, avgCoalMw, avgTotalMw, windPct, gasPct]
+
+    AesoSupplyDemandRow:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string }
+        hourEnding: { type: integer }
+        ailMw: { type: ["number", "null"] }
+        availableCapacityMw: { type: ["number", "null"] }
+        reserveMarginPct: { type: ["number", "null"] }
+        bcInterchangeMw: { type: ["number", "null"] }
+        skInterchangeMw: { type: ["number", "null"] }
+        netInterchangeMw: { type: ["number", "null"] }
+      required: [id, date, hourEnding]
+
+    AesoSupplyDemandMonthlyStat:
+      type: object
+      properties:
+        year: { type: integer }
+        month: { type: integer }
+        avgAilMw: { type: number }
+        peakAilMw: { type: number }
+        avgReserveMarginPct: { type: number }
+        minReserveMarginPct: { type: number }
+        avgNetInterchangeMw: { type: number }
+      required: [year, month, avgAilMw, peakAilMw, avgReserveMarginPct, minReserveMarginPct, avgNetInterchangeMw]
+
+    AesoOutageRow:
+      type: object
+      properties:
+        id: { type: integer }
+        facility: { type: string }
+        fuelType: { type: ["string", "null"] }
+        outageType: { type: ["string", "null"] }
+        outageStart: { type: string }
+        outageEnd: { type: ["string", "null"] }
+        mwOffline: { type: ["number", "null"] }
+        reason: { type: ["string", "null"] }
+        source: { type: ["string", "null"] }
+        reportedAt: { type: ["string", "null"] }
+      required: [id, facility, outageStart]
+
+    Aeso7dayCapabilityRow:
+      type: object
+      properties:
+        id: { type: integer }
+        forecastDate: { type: string }
+        targetDate: { type: string }
+        hourEnding: { type: integer }
+        gasMw: { type: ["number", "null"] }
+        windMw: { type: ["number", "null"] }
+        solarMw: { type: ["number", "null"] }
+        hydroMw: { type: ["number", "null"] }
+        storageMw: { type: ["number", "null"] }
+        otherMw: { type: ["number", "null"] }
+        totalAvailableMw: { type: ["number", "null"] }
+        ailForecastMw: { type: ["number", "null"] }
+        reserveMarginPct: { type: ["number", "null"] }
+      required: [id, forecastDate, targetDate, hourEnding]
+
+    AesoQueueProject:
+      type: object
+      properties:
+        id: { type: integer }
+        projectName: { type: ["string", "null"] }
+        fuelType: { type: ["string", "null"] }
+        capacityMw: { type: ["number", "null"] }
+        region: { type: ["string", "null"] }
+        county: { type: ["string", "null"] }
+        status: { type: ["string", "null"] }
+        queueDate: { type: ["string", "null"] }
+        expectedOnline: { type: ["string", "null"] }
+        transmissionConnection: { type: ["string", "null"] }
+        lat: { type: ["number", "null"] }
+        lng: { type: ["number", "null"] }
+      required: [id]
+
+    AesoQueueSummary:
+      type: object
+      properties:
+        byFuelType:
+          type: array
+          items:
+            type: object
+            properties:
+              fuelType: { type: string }
+              count: { type: integer }
+              totalCapacityMw: { type: number }
+            required: [fuelType, count, totalCapacityMw]
+        byRegion:
+          type: array
+          items:
+            type: object
+            properties:
+              region: { type: string }
+              count: { type: integer }
+              totalCapacityMw: { type: number }
+            required: [region, count, totalCapacityMw]
+        byStatus:
+          type: array
+          items:
+            type: object
+            properties:
+              status: { type: string }
+              count: { type: integer }
+            required: [status, count]
+        totalProjects: { type: integer }
+        totalCapacityMw: { type: number }
+      required: [byFuelType, byRegion, byStatus, totalProjects, totalCapacityMw]
+
+    AesoConstraintRow:
+      type: object
+      properties:
+        id: { type: integer }
+        eventDate: { type: string }
+        hourEnding: { type: ["integer", "null"] }
+        constraintType: { type: string }
+        corridor: { type: ["string", "null"] }
+        facility: { type: ["string", "null"] }
+        mwConstrained: { type: ["number", "null"] }
+        costCad: { type: ["number", "null"] }
+        reason: { type: ["string", "null"] }
+      required: [id, eventDate, constraintType]
+
+    AesoActualForecastRow:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string }
+        hourEnding: { type: integer }
+        actualPoolPrice: { type: ["number", "null"] }
+        forecastPoolPrice: { type: ["number", "null"] }
+        priceForecastError: { type: ["number", "null"] }
+        actualAilMw: { type: ["number", "null"] }
+        forecastAilMw: { type: ["number", "null"] }
+        actualWindMw: { type: ["number", "null"] }
+        forecastWindMw: { type: ["number", "null"] }
+        windForecastErrorMw: { type: ["number", "null"] }
+        actualSolarMw: { type: ["number", "null"] }
+        forecastSolarMw: { type: ["number", "null"] }
+        solarForecastErrorMw: { type: ["number", "null"] }
+        source: { type: ["string", "null"] }
+      required: [id, date, hourEnding]
+
+    AesoTransmissionCorridor:
+      type: object
+      properties:
+        id: { type: integer }
+        corridorName: { type: string }
+        fromRegion: { type: ["string", "null"] }
+        toRegion: { type: ["string", "null"] }
+        voltageKv: { type: ["integer", "null"] }
+        ratingMw: { type: ["number", "null"] }
+        winterRatingMw: { type: ["number", "null"] }
+        summerRatingMw: { type: ["number", "null"] }
+        congestionFrequencyPct: { type: ["number", "null"] }
+        avgConstrainedMw: { type: ["number", "null"] }
+        notes: { type: ["string", "null"] }
+      required: [id, corridorName]
+
+    AesoDashboard:
+      type: object
+      properties:
+        latestPoolPrice: { type: ["number", "null"] }
+        latestAilMw: { type: ["number", "null"] }
+        latestReserveMarginPct: { type: ["number", "null"] }
+        avgPriceLast30Days: { type: ["number", "null"] }
+        spikesLast30Days: { type: integer }
+        activeOutagesMw: { type: ["number", "null"] }
+        activeOutageCount: { type: integer }
+        queueTotalMw: { type: ["number", "null"] }
+        queueProjectCount: { type: integer }
+        windPctLastMonth: { type: ["number", "null"] }
+        gasPctLastMonth: { type: ["number", "null"] }
+        latestDate: { type: ["string", "null"] }
+      required: [spikesLast30Days, activeOutageCount, queueProjectCount]
+

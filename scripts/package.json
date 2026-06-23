@@ -25,6 +25,7 @@
     "seed-caiso-hourly": "tsx ./src/seed-caiso-hourly.ts",
     "seed-candidates": "tsx ./src/seed-candidates.ts",
     "seed-transmission-lines": "tsx ./src/seed-transmission-lines.ts",
+    "seed-aeso-data": "tsx ./src/seed-aeso-data.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

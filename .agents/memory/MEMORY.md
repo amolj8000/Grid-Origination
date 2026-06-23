@@ -15,3 +15,4 @@
 - [PyPSA OPF congestion calibration](pypsa-opf-congestion.md) — LMP spread = 0 unless wind_cf ≥ 0.55 AND CREZ line caps tightened; defaults in network.py + main.py + frontend slider must all match.
 - [Transmission lines geometry crash](tx-lines-geometry.md) — HIFLD mixes MultiLineString (3-D coord array) stored with "LineString" type; detectGeomType() in energy_stats.ts + flatten in map.tsx fetch handler prevents Leaflet renderer crash.
 - [Commissioning year data gap](commissioning-year.md) — candidates-seed.csv has no operating_year column; DB populated via technology-based SQL UPDATE (realistic vintage ranges by asset_type); for real data, regenerate CSV from EIA 860 with "Operating Year" field included.
+- [AESO Platform](aeso-platform.md) — standalone artifact at /aeso/; 9 DB tables, 16 API endpoints, 8 pages; pool price ~21k rows Jan2024-May2026; db.execute() returns {rows:[]} not iterable array.

@@ -752,3 +752,357 @@ export const GetQueueSummaryResponse = zod.object({
     }),
   ),
 });
+
+/**
+ * @summary AESO dashboard summary
+ */
+export const GetAesoDashboardResponse = zod.object({
+  latestPoolPrice: zod.number().nullish(),
+  latestAilMw: zod.number().nullish(),
+  latestReserveMarginPct: zod.number().nullish(),
+  avgPriceLast30Days: zod.number().nullish(),
+  spikesLast30Days: zod.number(),
+  activeOutagesMw: zod.number().nullish(),
+  activeOutageCount: zod.number(),
+  queueTotalMw: zod.number().nullish(),
+  queueProjectCount: zod.number(),
+  windPctLastMonth: zod.number().nullish(),
+  gasPctLastMonth: zod.number().nullish(),
+  latestDate: zod.string().nullish(),
+});
+
+/**
+ * @summary Pool price time series
+ */
+export const GetAesoPoolPriceQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetAesoPoolPriceResponseItem = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  hourEnding: zod.number(),
+  poolPrice: zod.number().nullish(),
+  forecastPoolPrice: zod.number().nullish(),
+  ailMw: zod.number().nullish(),
+  netGenMw: zod.number().nullish(),
+});
+export const GetAesoPoolPriceResponse = zod.array(GetAesoPoolPriceResponseItem);
+
+/**
+ * @summary Monthly pool price statistics
+ */
+export const GetAesoPoolPriceStatsResponseItem = zod.object({
+  year: zod.number(),
+  month: zod.number(),
+  avgPrice: zod.number(),
+  minPrice: zod.number(),
+  maxPrice: zod.number(),
+  spikeCount: zod.number(),
+  negCount: zod.number(),
+  volatility: zod.number(),
+});
+export const GetAesoPoolPriceStatsResponse = zod.array(
+  GetAesoPoolPriceStatsResponseItem,
+);
+
+/**
+ * @summary Pool price spike events (price >= threshold)
+ */
+export const GetAesoPoolPriceSpikesQueryParams = zod.object({
+  threshold: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetAesoPoolPriceSpikesResponseItem = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  hourEnding: zod.number(),
+  poolPrice: zod.number().nullish(),
+  forecastPoolPrice: zod.number().nullish(),
+  ailMw: zod.number().nullish(),
+  netGenMw: zod.number().nullish(),
+});
+export const GetAesoPoolPriceSpikesResponse = zod.array(
+  GetAesoPoolPriceSpikesResponseItem,
+);
+
+/**
+ * @summary Hourly generation mix
+ */
+export const GetAesoGenerationQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetAesoGenerationResponseItem = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  hourEnding: zod.number(),
+  gasMw: zod.number().nullish(),
+  coalMw: zod.number().nullish(),
+  windMw: zod.number().nullish(),
+  solarMw: zod.number().nullish(),
+  hydroMw: zod.number().nullish(),
+  storageMw: zod.number().nullish(),
+  otherMw: zod.number().nullish(),
+  totalMw: zod.number().nullish(),
+});
+export const GetAesoGenerationResponse = zod.array(
+  GetAesoGenerationResponseItem,
+);
+
+/**
+ * @summary Monthly generation mix aggregates
+ */
+export const GetAesoGenerationMonthlyResponseItem = zod.object({
+  year: zod.number(),
+  month: zod.number(),
+  avgGasMw: zod.number(),
+  avgWindMw: zod.number(),
+  avgSolarMw: zod.number(),
+  avgHydroMw: zod.number(),
+  avgCoalMw: zod.number(),
+  avgTotalMw: zod.number(),
+  windPct: zod.number(),
+  gasPct: zod.number(),
+});
+export const GetAesoGenerationMonthlyResponse = zod.array(
+  GetAesoGenerationMonthlyResponseItem,
+);
+
+/**
+ * @summary Hourly supply and demand
+ */
+export const GetAesoSupplyDemandQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetAesoSupplyDemandResponseItem = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  hourEnding: zod.number(),
+  ailMw: zod.number().nullish(),
+  availableCapacityMw: zod.number().nullish(),
+  reserveMarginPct: zod.number().nullish(),
+  bcInterchangeMw: zod.number().nullish(),
+  skInterchangeMw: zod.number().nullish(),
+  netInterchangeMw: zod.number().nullish(),
+});
+export const GetAesoSupplyDemandResponse = zod.array(
+  GetAesoSupplyDemandResponseItem,
+);
+
+/**
+ * @summary Monthly supply/demand averages
+ */
+export const GetAesoSupplyDemandStatsResponseItem = zod.object({
+  year: zod.number(),
+  month: zod.number(),
+  avgAilMw: zod.number(),
+  peakAilMw: zod.number(),
+  avgReserveMarginPct: zod.number(),
+  minReserveMarginPct: zod.number(),
+  avgNetInterchangeMw: zod.number(),
+});
+export const GetAesoSupplyDemandStatsResponse = zod.array(
+  GetAesoSupplyDemandStatsResponseItem,
+);
+
+/**
+ * @summary Outage events
+ */
+export const GetAesoOutagesQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  fuelType: zod.coerce.string().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetAesoOutagesResponseItem = zod.object({
+  id: zod.number(),
+  facility: zod.string(),
+  fuelType: zod.string().nullish(),
+  outageType: zod.string().nullish(),
+  outageStart: zod.string(),
+  outageEnd: zod.string().nullish(),
+  mwOffline: zod.number().nullish(),
+  reason: zod.string().nullish(),
+  source: zod.string().nullish(),
+  reportedAt: zod.string().nullish(),
+});
+export const GetAesoOutagesResponse = zod.array(GetAesoOutagesResponseItem);
+
+/**
+ * @summary Upcoming planned outages
+ */
+export const GetAesoOutagesUpcomingResponseItem = zod.object({
+  id: zod.number(),
+  facility: zod.string(),
+  fuelType: zod.string().nullish(),
+  outageType: zod.string().nullish(),
+  outageStart: zod.string(),
+  outageEnd: zod.string().nullish(),
+  mwOffline: zod.number().nullish(),
+  reason: zod.string().nullish(),
+  source: zod.string().nullish(),
+  reportedAt: zod.string().nullish(),
+});
+export const GetAesoOutagesUpcomingResponse = zod.array(
+  GetAesoOutagesUpcomingResponseItem,
+);
+
+/**
+ * @summary 7-day generation capability forecast
+ */
+export const GetAeso7dayCapabilityResponseItem = zod.object({
+  id: zod.number(),
+  forecastDate: zod.string(),
+  targetDate: zod.string(),
+  hourEnding: zod.number(),
+  gasMw: zod.number().nullish(),
+  windMw: zod.number().nullish(),
+  solarMw: zod.number().nullish(),
+  hydroMw: zod.number().nullish(),
+  storageMw: zod.number().nullish(),
+  otherMw: zod.number().nullish(),
+  totalAvailableMw: zod.number().nullish(),
+  ailForecastMw: zod.number().nullish(),
+  reserveMarginPct: zod.number().nullish(),
+});
+export const GetAeso7dayCapabilityResponse = zod.array(
+  GetAeso7dayCapabilityResponseItem,
+);
+
+/**
+ * @summary AESO interconnection queue projects
+ */
+export const GetAesoQueueQueryParams = zod.object({
+  fuelType: zod.coerce.string().optional(),
+  region: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+});
+
+export const GetAesoQueueResponseItem = zod.object({
+  id: zod.number(),
+  projectName: zod.string().nullish(),
+  fuelType: zod.string().nullish(),
+  capacityMw: zod.number().nullish(),
+  region: zod.string().nullish(),
+  county: zod.string().nullish(),
+  status: zod.string().nullish(),
+  queueDate: zod.string().nullish(),
+  expectedOnline: zod.string().nullish(),
+  transmissionConnection: zod.string().nullish(),
+  lat: zod.number().nullish(),
+  lng: zod.number().nullish(),
+});
+export const GetAesoQueueResponse = zod.array(GetAesoQueueResponseItem);
+
+/**
+ * @summary AESO queue summary statistics
+ */
+export const GetAesoQueueStatsResponse = zod.object({
+  byFuelType: zod.array(
+    zod.object({
+      fuelType: zod.string(),
+      count: zod.number(),
+      totalCapacityMw: zod.number(),
+    }),
+  ),
+  byRegion: zod.array(
+    zod.object({
+      region: zod.string(),
+      count: zod.number(),
+      totalCapacityMw: zod.number(),
+    }),
+  ),
+  byStatus: zod.array(
+    zod.object({
+      status: zod.string(),
+      count: zod.number(),
+    }),
+  ),
+  totalProjects: zod.number(),
+  totalCapacityMw: zod.number(),
+});
+
+/**
+ * @summary Constraint events
+ */
+export const GetAesoConstraintsQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  corridor: zod.coerce.string().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetAesoConstraintsResponseItem = zod.object({
+  id: zod.number(),
+  eventDate: zod.string(),
+  hourEnding: zod.number().nullish(),
+  constraintType: zod.string(),
+  corridor: zod.string().nullish(),
+  facility: zod.string().nullish(),
+  mwConstrained: zod.number().nullish(),
+  costCad: zod.number().nullish(),
+  reason: zod.string().nullish(),
+});
+export const GetAesoConstraintsResponse = zod.array(
+  GetAesoConstraintsResponseItem,
+);
+
+/**
+ * @summary Actual vs forecast comparison
+ */
+export const GetAesoActualForecastQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetAesoActualForecastResponseItem = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  hourEnding: zod.number(),
+  actualPoolPrice: zod.number().nullish(),
+  forecastPoolPrice: zod.number().nullish(),
+  priceForecastError: zod.number().nullish(),
+  actualAilMw: zod.number().nullish(),
+  forecastAilMw: zod.number().nullish(),
+  actualWindMw: zod.number().nullish(),
+  forecastWindMw: zod.number().nullish(),
+  windForecastErrorMw: zod.number().nullish(),
+  actualSolarMw: zod.number().nullish(),
+  forecastSolarMw: zod.number().nullish(),
+  solarForecastErrorMw: zod.number().nullish(),
+  source: zod.string().nullish(),
+});
+export const GetAesoActualForecastResponse = zod.array(
+  GetAesoActualForecastResponseItem,
+);
+
+/**
+ * @summary Transmission corridor ratings and congestion
+ */
+export const GetAesoTransmissionCorridorsResponseItem = zod.object({
+  id: zod.number(),
+  corridorName: zod.string(),
+  fromRegion: zod.string().nullish(),
+  toRegion: zod.string().nullish(),
+  voltageKv: zod.number().nullish(),
+  ratingMw: zod.number().nullish(),
+  winterRatingMw: zod.number().nullish(),
+  summerRatingMw: zod.number().nullish(),
+  congestionFrequencyPct: zod.number().nullish(),
+  avgConstrainedMw: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+export const GetAesoTransmissionCorridorsResponse = zod.array(
+  GetAesoTransmissionCorridorsResponseItem,
+);

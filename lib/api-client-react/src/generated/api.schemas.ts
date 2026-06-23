@@ -348,6 +348,285 @@ export interface QueueSummary {
   byMarket: QueueSummaryByMarketItem[];
 }
 
+export interface AesoPoolPriceRow {
+  id: number;
+  date: string;
+  hourEnding: number;
+  /** @nullable */
+  poolPrice?: number | null;
+  /** @nullable */
+  forecastPoolPrice?: number | null;
+  /** @nullable */
+  ailMw?: number | null;
+  /** @nullable */
+  netGenMw?: number | null;
+}
+
+export interface AesoMonthlyPriceStat {
+  year: number;
+  month: number;
+  avgPrice: number;
+  minPrice: number;
+  maxPrice: number;
+  spikeCount: number;
+  negCount: number;
+  volatility: number;
+}
+
+export interface AesoGenerationRow {
+  id: number;
+  date: string;
+  hourEnding: number;
+  /** @nullable */
+  gasMw?: number | null;
+  /** @nullable */
+  coalMw?: number | null;
+  /** @nullable */
+  windMw?: number | null;
+  /** @nullable */
+  solarMw?: number | null;
+  /** @nullable */
+  hydroMw?: number | null;
+  /** @nullable */
+  storageMw?: number | null;
+  /** @nullable */
+  otherMw?: number | null;
+  /** @nullable */
+  totalMw?: number | null;
+}
+
+export interface AesoGenerationMonthlyStat {
+  year: number;
+  month: number;
+  avgGasMw: number;
+  avgWindMw: number;
+  avgSolarMw: number;
+  avgHydroMw: number;
+  avgCoalMw: number;
+  avgTotalMw: number;
+  windPct: number;
+  gasPct: number;
+}
+
+export interface AesoSupplyDemandRow {
+  id: number;
+  date: string;
+  hourEnding: number;
+  /** @nullable */
+  ailMw?: number | null;
+  /** @nullable */
+  availableCapacityMw?: number | null;
+  /** @nullable */
+  reserveMarginPct?: number | null;
+  /** @nullable */
+  bcInterchangeMw?: number | null;
+  /** @nullable */
+  skInterchangeMw?: number | null;
+  /** @nullable */
+  netInterchangeMw?: number | null;
+}
+
+export interface AesoSupplyDemandMonthlyStat {
+  year: number;
+  month: number;
+  avgAilMw: number;
+  peakAilMw: number;
+  avgReserveMarginPct: number;
+  minReserveMarginPct: number;
+  avgNetInterchangeMw: number;
+}
+
+export interface AesoOutageRow {
+  id: number;
+  facility: string;
+  /** @nullable */
+  fuelType?: string | null;
+  /** @nullable */
+  outageType?: string | null;
+  outageStart: string;
+  /** @nullable */
+  outageEnd?: string | null;
+  /** @nullable */
+  mwOffline?: number | null;
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  reportedAt?: string | null;
+}
+
+export interface Aeso7dayCapabilityRow {
+  id: number;
+  forecastDate: string;
+  targetDate: string;
+  hourEnding: number;
+  /** @nullable */
+  gasMw?: number | null;
+  /** @nullable */
+  windMw?: number | null;
+  /** @nullable */
+  solarMw?: number | null;
+  /** @nullable */
+  hydroMw?: number | null;
+  /** @nullable */
+  storageMw?: number | null;
+  /** @nullable */
+  otherMw?: number | null;
+  /** @nullable */
+  totalAvailableMw?: number | null;
+  /** @nullable */
+  ailForecastMw?: number | null;
+  /** @nullable */
+  reserveMarginPct?: number | null;
+}
+
+export interface AesoQueueProject {
+  id: number;
+  /** @nullable */
+  projectName?: string | null;
+  /** @nullable */
+  fuelType?: string | null;
+  /** @nullable */
+  capacityMw?: number | null;
+  /** @nullable */
+  region?: string | null;
+  /** @nullable */
+  county?: string | null;
+  /** @nullable */
+  status?: string | null;
+  /** @nullable */
+  queueDate?: string | null;
+  /** @nullable */
+  expectedOnline?: string | null;
+  /** @nullable */
+  transmissionConnection?: string | null;
+  /** @nullable */
+  lat?: number | null;
+  /** @nullable */
+  lng?: number | null;
+}
+
+export type AesoQueueSummaryByFuelTypeItem = {
+  fuelType: string;
+  count: number;
+  totalCapacityMw: number;
+};
+
+export type AesoQueueSummaryByRegionItem = {
+  region: string;
+  count: number;
+  totalCapacityMw: number;
+};
+
+export type AesoQueueSummaryByStatusItem = {
+  status: string;
+  count: number;
+};
+
+export interface AesoQueueSummary {
+  byFuelType: AesoQueueSummaryByFuelTypeItem[];
+  byRegion: AesoQueueSummaryByRegionItem[];
+  byStatus: AesoQueueSummaryByStatusItem[];
+  totalProjects: number;
+  totalCapacityMw: number;
+}
+
+export interface AesoConstraintRow {
+  id: number;
+  eventDate: string;
+  /** @nullable */
+  hourEnding?: number | null;
+  constraintType: string;
+  /** @nullable */
+  corridor?: string | null;
+  /** @nullable */
+  facility?: string | null;
+  /** @nullable */
+  mwConstrained?: number | null;
+  /** @nullable */
+  costCad?: number | null;
+  /** @nullable */
+  reason?: string | null;
+}
+
+export interface AesoActualForecastRow {
+  id: number;
+  date: string;
+  hourEnding: number;
+  /** @nullable */
+  actualPoolPrice?: number | null;
+  /** @nullable */
+  forecastPoolPrice?: number | null;
+  /** @nullable */
+  priceForecastError?: number | null;
+  /** @nullable */
+  actualAilMw?: number | null;
+  /** @nullable */
+  forecastAilMw?: number | null;
+  /** @nullable */
+  actualWindMw?: number | null;
+  /** @nullable */
+  forecastWindMw?: number | null;
+  /** @nullable */
+  windForecastErrorMw?: number | null;
+  /** @nullable */
+  actualSolarMw?: number | null;
+  /** @nullable */
+  forecastSolarMw?: number | null;
+  /** @nullable */
+  solarForecastErrorMw?: number | null;
+  /** @nullable */
+  source?: string | null;
+}
+
+export interface AesoTransmissionCorridor {
+  id: number;
+  corridorName: string;
+  /** @nullable */
+  fromRegion?: string | null;
+  /** @nullable */
+  toRegion?: string | null;
+  /** @nullable */
+  voltageKv?: number | null;
+  /** @nullable */
+  ratingMw?: number | null;
+  /** @nullable */
+  winterRatingMw?: number | null;
+  /** @nullable */
+  summerRatingMw?: number | null;
+  /** @nullable */
+  congestionFrequencyPct?: number | null;
+  /** @nullable */
+  avgConstrainedMw?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface AesoDashboard {
+  /** @nullable */
+  latestPoolPrice?: number | null;
+  /** @nullable */
+  latestAilMw?: number | null;
+  /** @nullable */
+  latestReserveMarginPct?: number | null;
+  /** @nullable */
+  avgPriceLast30Days?: number | null;
+  spikesLast30Days: number;
+  /** @nullable */
+  activeOutagesMw?: number | null;
+  activeOutageCount: number;
+  /** @nullable */
+  queueTotalMw?: number | null;
+  queueProjectCount: number;
+  /** @nullable */
+  windPctLastMonth?: number | null;
+  /** @nullable */
+  gasPctLastMonth?: number | null;
+  /** @nullable */
+  latestDate?: string | null;
+}
+
 export type ListCandidatesParams = {
   market?: ListCandidatesMarket;
   assetType?: ListCandidatesAssetType;
@@ -477,3 +756,52 @@ export const GetTopCandidatesObjective = {
   load_hedge: "load_hedge",
   decarbonization: "decarbonization",
 } as const;
+
+export type GetAesoPoolPriceParams = {
+  from?: string;
+  to?: string;
+  limit?: number;
+};
+
+export type GetAesoPoolPriceSpikesParams = {
+  threshold?: number;
+  limit?: number;
+};
+
+export type GetAesoGenerationParams = {
+  from?: string;
+  to?: string;
+  limit?: number;
+};
+
+export type GetAesoSupplyDemandParams = {
+  from?: string;
+  to?: string;
+  limit?: number;
+};
+
+export type GetAesoOutagesParams = {
+  from?: string;
+  to?: string;
+  fuelType?: string;
+  limit?: number;
+};
+
+export type GetAesoQueueParams = {
+  fuelType?: string;
+  region?: string;
+  status?: string;
+};
+
+export type GetAesoConstraintsParams = {
+  from?: string;
+  to?: string;
+  corridor?: string;
+  limit?: number;
+};
+
+export type GetAesoActualForecastParams = {
+  from?: string;
+  to?: string;
+  limit?: number;
+};
