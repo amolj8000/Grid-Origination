@@ -185,6 +185,24 @@ _T1_FLEET = [
 _T1_LOAD = {"HOUSTON": 0.38, "NORTH": 0.22, "SOUTH": 0.27, "WEST": 0.11, "PAN": 0.02}
 _T1_PEAKER = {"NORTH": 20000, "WEST": 15000, "PAN": 10000, "SOUTH": 25000, "HOUSTON": 25000}
 
+# ── Public aliases (backward-compat for simulators.py) ───────────────────────
+BUSES = _T1_BUSES
+LINES = _T1_LINES
+LOAD_FRACTIONS = _T1_LOAD
+HUB_MAP: dict[str, str] = {bus_id: meta["hub"] for bus_id, meta in _T1_BUSES.items()}
+HIDDEN_CARRIERS: set[str] = {"peaker"}
+GENERATORS: list[dict] = [
+    {
+        "name": f"{bus[:3]}-{carrier}",
+        "bus": bus,
+        "carrier": carrier,
+        "p_nom": float(total_mw),
+        "marginal_cost": _marginal_cost(carrier, 3.5),
+        "p_max_pu": MAX_CF.get(carrier, 1.0),
+    }
+    for (bus, carrier, total_mw, _) in _T1_FLEET
+]
+
 
 def _build_tier1(system_load_mw, wind_cf, solar_cf, gas_price):
     n = pypsa.Network()

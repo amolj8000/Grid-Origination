@@ -3,7 +3,7 @@ import { CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, User, Send, BrainCircuit, Zap, Loader2, Database, TableIcon, BarChart2 } from "lucide-react";
+import { Bot, User, Send, BrainCircuit, Zap, Loader2, Database, TableIcon, BarChart2, Activity, Cpu } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -16,6 +16,8 @@ import {
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -38,12 +40,19 @@ type ChartBlock = {
   rows: Record<string, unknown>[];
 };
 
-type Block = TableBlock | ChartBlock;
+type SimulationBlock = {
+  type: "simulation";
+  simulation_type: string;
+  result: Record<string, unknown>;
+};
+
+type Block = TableBlock | ChartBlock | SimulationBlock;
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   sqlQueries?: string[];
+  simulations?: string[];
   blocks?: Block[];
 }
 
@@ -199,11 +208,261 @@ function DataChart({ block }: { block: ChartBlock }) {
   return null;
 }
 
+const SIM_TYPE_LABELS: Record<string, string> = {
+  opf: "DC-OPF",
+  curtailment: "Curtailment Analysis",
+  tx_relief: "Transmission Relief",
+  scarcity: "Scarcity / Load Shedding",
+  battery: "Battery Storage OPF",
+};
+
+function SimulationResultBlock({ block }: { block: SimulationBlock }) {
+  const { simulation_type, result } = block;
+  const label = SIM_TYPE_LABELS[simulation_type] ?? simulation_type;
+
+  const lmp = result.lmp as Record<string, number> | undefined;
+  const lines = result.lines as Array<Record<string, unknown>> | undefined;
+  const zoneSummary = result.zone_summary as Array<Record<string, unknown>> | undefined;
+  const scarcityZones = (result.zone_risk ?? result.zones) as Array<Record<string, unknown>> | undefined;
+  const schedule = result.hourly_schedule as Array<Record<string, unknown>> | undefined;
+  const baseline = result.baseline as Record<string, unknown> | undefined;
+  const upgraded = result.upgraded as Record<string, unknown> | undefined;
+
+  const lmpData = lmp
+    ? Object.entries(lmp).map(([zone, price]) => ({ zone, price }))
+    : [];
+
+  return (
+    <div className="mt-3 rounded-lg border overflow-hidden" style={{ borderColor: "rgba(20,184,166,0.3)", background: "rgba(20,184,166,0.04)" }}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: "rgba(20,184,166,0.2)", background: "rgba(20,184,166,0.08)" }}>
+        <Cpu className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs font-semibold text-primary">PyPSA {label}</span>
+        {result.status && (
+          <Badge variant="outline" className="ml-auto text-xs" style={{ color: "#22c55e", borderColor: "rgba(34,197,94,0.3)" }}>
+            {String(result.status)}
+          </Badge>
+        )}
+      </div>
+
+      <div className="p-3 space-y-3">
+        {/* Nodal LMPs bar chart */}
+        {lmpData.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Nodal LMPs ($/MWh)</p>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={lmpData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="zone" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} width={44} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 11 }}
+                  formatter={(v: number) => [`$${v.toFixed(2)}/MWh`, "LMP"]}
+                />
+                <Bar dataKey="price" fill="#14b8a6" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Summary stats row */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {result.total_curtailed_mw !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Total Curtailed</p>
+              <p className="font-semibold text-amber-400">{Number(result.total_curtailed_mw).toFixed(0)} MW</p>
+            </div>
+          )}
+          {result.curtail_pct !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Curtailment %</p>
+              <p className="font-semibold text-amber-400">{Number(result.curtail_pct).toFixed(1)}%</p>
+            </div>
+          )}
+          {result.avg_lmp !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Avg System LMP</p>
+              <p className="font-semibold text-primary">${Number(result.avg_lmp).toFixed(2)}/MWh</p>
+            </div>
+          )}
+          {result.total_load_shed_mw !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Load Shed</p>
+              <p className="font-semibold text-red-400">{Number(result.total_load_shed_mw).toFixed(0)} MW</p>
+            </div>
+          )}
+          {result.max_lmp !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Max LMP (Scarcity)</p>
+              <p className="font-semibold text-red-400">${Number(result.max_lmp).toFixed(2)}/MWh</p>
+            </div>
+          )}
+          {result.arbitrage_value_annual !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Annual Arbitrage</p>
+              <p className="font-semibold text-green-400">${(Number(result.arbitrage_value_annual) / 1e6).toFixed(1)}M</p>
+            </div>
+          )}
+          {result.total_congestion_rent !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Congestion Rent</p>
+              <p className="font-semibold text-purple-400">${Number(result.total_congestion_rent).toFixed(0)}/hr</p>
+            </div>
+          )}
+          {(result as Record<string, unknown>)["spread_reduction"] !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Spread Reduction</p>
+              <p className="font-semibold text-green-400">${Number((result as Record<string, unknown>)["spread_reduction"]).toFixed(2)}/MWh</p>
+            </div>
+          )}
+          {(result as Record<string, unknown>)["cong_rent_reduction_k$"] !== undefined && (
+            <div className="rounded p-2 bg-card/60 border border-border">
+              <p className="text-muted-foreground">Cong. Rent Saved</p>
+              <p className="font-semibold text-green-400">${Number((result as Record<string, unknown>)["cong_rent_reduction_k$"]).toFixed(0)}k/hr</p>
+            </div>
+          )}
+        </div>
+
+        {/* Line flows table */}
+        {lines && lines.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Transmission Line Flows</p>
+            <div className="overflow-x-auto rounded border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs py-1.5">Line</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">Flow MW</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">Cap MW</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">Loading %</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lines.map((line, i) => {
+                    const loading = Number(line.loading_pct ?? line.loading_before_pct ?? 0);
+                    const congested = loading >= 95;
+                    return (
+                      <TableRow key={i} className={congested ? "bg-red-500/5" : ""}>
+                        <TableCell className="text-xs py-1 font-mono">{String(line.name)}</TableCell>
+                        <TableCell className="text-xs py-1 text-right tabular-nums">{Number(line.flow_mw ?? line.flow_before_mw ?? 0).toFixed(0)}</TableCell>
+                        <TableCell className="text-xs py-1 text-right tabular-nums">{Number(line.capacity_mw).toFixed(0)}</TableCell>
+                        <TableCell className={`text-xs py-1 text-right tabular-nums font-semibold ${congested ? "text-red-400" : "text-muted-foreground"}`}>
+                          {loading.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
+        {/* Zone summary for curtailment */}
+        {zoneSummary && zoneSummary.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Zone Curtailment Summary</p>
+            <div className="overflow-x-auto rounded border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs py-1.5">Zone</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">LMP</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">Curtailed MW</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">Curtail %</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {zoneSummary.map((z, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs py-1 font-mono">{String(z.zone)}</TableCell>
+                      <TableCell className="text-xs py-1 text-right tabular-nums">${Number(z.lmp).toFixed(2)}</TableCell>
+                      <TableCell className="text-xs py-1 text-right tabular-nums text-amber-400">{Number(z.curtailed_mw).toFixed(0)}</TableCell>
+                      <TableCell className="text-xs py-1 text-right tabular-nums">{Number(z.curtail_pct).toFixed(1)}%</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
+        {/* Scarcity zone_risk results */}
+        {scarcityZones && scarcityZones.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Zone Risk Assessment</p>
+            <div className="overflow-x-auto rounded border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs py-1.5">Zone</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">LMP</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">Load Shed MW</TableHead>
+                    <TableHead className="text-xs py-1.5 text-right">Risk Level</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {scarcityZones.map((z, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs py-1 font-mono">{String(z.zone ?? z.bus ?? "")}</TableCell>
+                      <TableCell className="text-xs py-1 text-right tabular-nums">${Number(z.lmp ?? 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-xs py-1 text-right tabular-nums text-red-400">{Number(z.load_shed_mw ?? 0).toFixed(0)}</TableCell>
+                      <TableCell className="text-xs py-1 text-right">
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${z.risk_level === "CRITICAL" ? "bg-red-500/20 text-red-400" : z.risk_level === "HIGH" ? "bg-amber-500/20 text-amber-400" : "bg-green-500/20 text-green-400"}`}>
+                          {String(z.risk_level ?? "LOW")}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
+        {/* Before/after TX relief — baseline / upgraded */}
+        {baseline && upgraded && (
+          <div className="grid grid-cols-2 gap-2">
+            {([["Baseline", baseline], ["Upgraded", upgraded]] as [string, Record<string, unknown>][]).map(([label, d]) => (
+              <div key={label} className="rounded p-2 bg-card/60 border border-border">
+                <p className="text-xs font-semibold text-muted-foreground mb-1">{label}</p>
+                <p className="text-xs">Avg LMP: <span className="text-primary font-semibold">${Number(d.avg_lmp ?? 0).toFixed(2)}</span></p>
+                <p className="text-xs">Cong. Rent: <span className="text-purple-400 font-semibold">${Number((d as Record<string, unknown>)["total_congestion_rent_k$"] ?? 0).toFixed(1)}k/hr</span></p>
+                <p className="text-xs">Curtailed: <span className="text-amber-400 font-semibold">{Number(d.total_curtailed_mw ?? 0).toFixed(0)} MW</span></p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Battery hourly chart */}
+        {schedule && schedule.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2">24-Hour Battery Dispatch</p>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={schedule.slice(0, 24)} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="hour" tick={{ fontSize: 9, fill: "#94a3b8" }} tickFormatter={h => `${h}:00`} />
+                <YAxis tick={{ fontSize: 9, fill: "#94a3b8" }} width={40} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 10 }}
+                  formatter={(v: number) => [`${v.toFixed(0)} MW`, ""]}
+                />
+                <Legend wrapperStyle={{ fontSize: 9, color: "#94a3b8" }} />
+                <Bar dataKey="charge_mw" name="Charge" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="discharge_mw" name="Discharge" fill="#14b8a6" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const SUGGESTED = [
-  "What are our top 3 ERCOT wind candidates by overall score?",
+  "What happens to HB_PAN LMPs if wind CF increases from 40% to 65%?",
+  "How much load shedding if 3 GW of thermal is derated 15% at peak load?",
+  "What is the arbitrage value of a 200 MW / 4-hour battery at HB_WEST?",
   "Which ERCOT nodes have the highest negative price frequency?",
-  "Compare curtailment risk: ERCOT LZ_WEST vs LZ_HOUSTON for wind",
-  "What is the queue depth for solar in CAISO by status?",
 ];
 
 export default function QACopilot() {
@@ -211,17 +470,17 @@ export default function QACopilot() {
     {
       role: "assistant",
       content:
-        "I'm the Grid Origination Copilot, connected to live market data across ERCOT, CAISO, and PJM. I can query the database directly to answer questions about candidates, nodal pricing, congestion risk, curtailment exposure, and interconnection queue dynamics.\n\nTry asking about specific candidates, node spreads, or market comparisons.",
+        "I'm the Grid Origination Copilot. I can query live market data AND run live PyPSA DC-OPF power simulations to answer what-if scenarios.\n\nTry asking: \"What happens to HB_PAN if wind CF goes to 65%?\" or \"What's the arbitrage value of a 200 MW battery at HB_WEST?\"",
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [sqlStatus, setSqlStatus] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<{ text: string; type: "sql" | "sim" } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sqlStatus]);
+  }, [messages, statusMsg]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
@@ -231,7 +490,7 @@ export default function QACopilot() {
     setMessages(newMessages);
     setInput("");
     setIsLoading(true);
-    setSqlStatus(null);
+    setStatusMsg(null);
 
     const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }));
 
@@ -249,9 +508,10 @@ export default function QACopilot() {
 
       let assistantContent = "";
       const sqlQueryLog: string[] = [];
+      const simLog: string[] = [];
       const pendingBlocks: Block[] = [];
 
-      setMessages(prev => [...prev, { role: "assistant", content: "", sqlQueries: [], blocks: [] }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "", sqlQueries: [], simulations: [], blocks: [] }]);
 
       const updateLastMessage = () => {
         setMessages(prev => {
@@ -260,6 +520,7 @@ export default function QACopilot() {
             role: "assistant",
             content: assistantContent,
             sqlQueries: sqlQueryLog.length > 0 ? [...sqlQueryLog] : undefined,
+            simulations: simLog.length > 0 ? [...simLog] : undefined,
             blocks: pendingBlocks.length > 0 ? [...pendingBlocks] : undefined,
           };
           return updated;
@@ -268,10 +529,25 @@ export default function QACopilot() {
 
       const handleEvent = (data: Record<string, unknown>) => {
         if (data.type === "sql_query" && typeof data.rationale === "string") {
-          setSqlStatus(data.rationale);
+          setStatusMsg({ text: data.rationale, type: "sql" });
           sqlQueryLog.push(data.rationale);
         } else if (data.type === "sql_done" || data.type === "sql_error") {
-          setSqlStatus(null);
+          setStatusMsg(null);
+        } else if (data.type === "simulation_start") {
+          const simType = SIM_TYPE_LABELS[data.simulation_type as string] ?? String(data.simulation_type);
+          const msg = typeof data.rationale === "string" ? data.rationale : `Running ${simType}...`;
+          setStatusMsg({ text: msg, type: "sim" });
+          simLog.push(simType);
+        } else if (data.type === "simulation_done") {
+          setStatusMsg(null);
+          pendingBlocks.push({
+            type: "simulation",
+            simulation_type: data.simulation_type as string,
+            result: data.result as Record<string, unknown>,
+          });
+          updateLastMessage();
+        } else if (data.type === "simulation_error") {
+          setStatusMsg(null);
         } else if (data.type === "table") {
           pendingBlocks.push({
             type: "table",
@@ -341,7 +617,7 @@ export default function QACopilot() {
       ]);
     } finally {
       setIsLoading(false);
-      setSqlStatus(null);
+      setStatusMsg(null);
     }
   };
 
@@ -360,7 +636,7 @@ export default function QACopilot() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Origination Copilot</h1>
             <p className="text-muted-foreground">
-              Natural language interface powered by OpenAI + live market data.
+              Natural language interface — live market data + PyPSA DC-OPF simulations.
             </p>
           </div>
           <Badge
@@ -368,7 +644,7 @@ export default function QACopilot() {
             className="ml-auto bg-card"
             style={{ color: "#22c55e", borderColor: "rgba(34,197,94,0.3)" }}
           >
-            <Zap className="mr-1 h-3 w-3" style={{ color: "#22c55e" }} /> OpenAI + Live DB
+            <Zap className="mr-1 h-3 w-3" style={{ color: "#22c55e" }} /> OpenAI + OPF Engine
           </Badge>
         </div>
 
@@ -380,6 +656,8 @@ export default function QACopilot() {
                 onClick={() => sendMessage(s)}
                 className="text-left text-sm p-3 rounded-lg border border-border bg-card hover:border-primary/50 hover:bg-primary/5 transition-all text-muted-foreground hover:text-foreground"
               >
+                {i < 3 && <span className="inline-flex items-center gap-1 text-xs text-primary font-medium mb-1"><Activity className="h-3 w-3" /> OPF Scenario</span>}
+                <br className={i < 3 ? "" : "hidden"} />
                 {s}
               </button>
             ))}
@@ -403,15 +681,25 @@ export default function QACopilot() {
                   <div
                     className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"} max-w-[82%] gap-1`}
                   >
-                    {msg.role === "assistant" && msg.sqlQueries && msg.sqlQueries.length > 0 && (
+                    {msg.role === "assistant" && (msg.sqlQueries?.length || msg.simulations?.length) && (
                       <div className="flex flex-wrap gap-1 mb-1">
-                        {msg.sqlQueries.map((q, qi) => (
+                        {msg.sqlQueries?.map((q, qi) => (
                           <span
-                            key={qi}
+                            key={`sql-${qi}`}
                             className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20"
                           >
                             <Database className="h-3 w-3" />
                             {q}
+                          </span>
+                        ))}
+                        {msg.simulations?.map((s, si) => (
+                          <span
+                            key={`sim-${si}`}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border"
+                            style={{ background: "rgba(20,184,166,0.1)", color: "#14b8a6", borderColor: "rgba(20,184,166,0.3)" }}
+                          >
+                            <Cpu className="h-3 w-3" />
+                            {s}
                           </span>
                         ))}
                       </div>
@@ -438,6 +726,9 @@ export default function QACopilot() {
                             if (block.type === "chart") {
                               return <DataChart key={`c-${bi}`} block={block} />;
                             }
+                            if (block.type === "simulation") {
+                              return <SimulationResultBlock key={`s-${bi}`} block={block} />;
+                            }
                             return null;
                           })}
                         </div>
@@ -447,14 +738,23 @@ export default function QACopilot() {
                 </div>
               ))}
 
-              {sqlStatus && (
+              {statusMsg && (
                 <div className="flex gap-3">
                   <div className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-secondary border border-border">
-                    <Database className="h-4 w-4 text-primary animate-pulse" />
+                    {statusMsg.type === "sim"
+                      ? <Cpu className="h-4 w-4 text-primary animate-pulse" />
+                      : <Database className="h-4 w-4 text-primary animate-pulse" />
+                    }
                   </div>
-                  <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl rounded-tl-sm bg-primary/10 border border-primary/20 text-sm text-primary">
+                  <div
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm border"
+                    style={statusMsg.type === "sim"
+                      ? { background: "rgba(20,184,166,0.1)", borderColor: "rgba(20,184,166,0.3)", color: "#14b8a6" }
+                      : { background: "rgba(20,184,166,0.08)", borderColor: "rgba(20,184,166,0.2)", color: "#14b8a6" }
+                    }
+                  >
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    {sqlStatus}
+                    {statusMsg.text}
                   </div>
                 </div>
               )}
@@ -467,7 +767,7 @@ export default function QACopilot() {
             <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
               <Input
                 type="text"
-                placeholder="Ask about nodal basis risk, candidate scores, interconnection queues..."
+                placeholder="Ask a scenario: 'What happens to HB_PAN if wind CF goes to 65%?' or query data directly..."
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 className="flex-1 bg-background"
@@ -481,7 +781,7 @@ export default function QACopilot() {
         </div>
 
         <p className="text-xs text-muted-foreground text-center shrink-0">
-          Copilot can query live DB data — ERCOT, CAISO, PJM prices · 3,875 EIA candidates · Interconnection queues
+          Copilot runs live PyPSA DC-OPF simulations + queries ERCOT/CAISO/PJM data · 3,875 EIA candidates · 263k hourly price records
         </p>
       </div>
     </div>

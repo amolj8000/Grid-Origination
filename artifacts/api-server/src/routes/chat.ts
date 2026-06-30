@@ -153,13 +153,20 @@ ${topCandidates.rows.map(r => `  ${r.name.substring(0,35).padEnd(36)} ${r.market
 ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(14)} n=${String(r.count).padStart(5)}  avg_score=${r.avg_score}  avg_mw=${r.avg_mw}`).join("\n")}
 
 ━━━ GUIDANCE ━━━
-- run_sql for: filtering candidates by criteria, node price history, congestion event counts, DA-RT spread analysis, queue depth by zone, within-zone resource node comparisons, time-series trends
+- run_sql for: filtering candidates by criteria, node price history, congestion event counts, DA-RT spread analysis, queue depth by zone, within-zone resource node comparisons, time-series trends, battery arbitrage value (DA-RT spread capture)
+- run_simulation for: ALL "what if" scenario questions that require running power flow — new generation additions, wind/solar CF changes, thermal derates, load shedding, transmission upgrades, battery dispatch. Prefer run_simulation over run_sql for any forward-looking scenario.
+  • opf — base OPF: params { system_load_mw, wind_cf, solar_cf, gas_price_mmbtu }. Returns nodal LMPs, line flows, congestion rent, curtailment. Use for "what happens to HB_PAN if wind CF goes to 65%?"
+  • curtailment — vary CF, see curtailment MW + negative-price risk per zone: params { system_load_mw, wind_cf, solar_cf, gas_price_mmbtu, west_wind_bonus_pct }
+  • tx_relief — upgrade one transmission line, compare before/after: params { system_load_mw, wind_cf, solar_cf, gas_price_mmbtu, upgrade_line (one of NORTH-HOUSTON/NORTH-WEST/NORTH-SOUTH/WEST-PAN/WEST-SOUTH/SOUTH-HOUSTON), extra_capacity_pct }
+  • scarcity — thermal derate + high load → load shedding + price spikes: params { system_load_mw (keep ≤65000 for ERCOT; 55000 is a realistic peak), wind_cf, solar_cf, gas_derate_pct (0-50), nuclear_derate_pct (optional, 0-100) }
+  • battery — 24-hr multi-period OPF with StorageUnit: params { system_load_mw, battery_mw, battery_mwh, price_delta_factor }
 - All prices in $/MWh. neg_price_percent = % of monthly intervals with price < $0.
 - Congestion risk ↑ when volatility is high and DA-RT spreads are wide.
 - Curtailment risk ↑ when neg_price_percent is high (ERCOT wind LZ_WEST ~7-22%, solar worse).
 - Basis risk = DA-RT settlement spread + volatility at the project's delivery node.
 - Be quantitative and cite the data source (CDR 13060/13061 for ERCOT, OASIS for CAISO).
-- Format responses with clear headers, bullet points, and tables where appropriate.`;
+- Format responses with clear headers, bullet points, and tables where appropriate.
+- After run_simulation: always explain what the LMP changes mean economically and compare to baseline. For battery, state the annual arbitrage value and best charge/discharge hours.`;
 
     const tools: Parameters<typeof openai.chat.completions.create>[0]["tools"] = [
       {
@@ -182,6 +189,35 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
               },
             },
             required: ["query", "rationale"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "run_simulation",
+          description:
+            "Run a live PyPSA DC-OPF power system simulation to answer what-if scenario questions about ERCOT. Use this for ANY forward-looking scenario: adding new generation, changing wind/solar capacity factors, thermal outages, transmission upgrades, battery dispatch, or load growth. Returns nodal LMPs, line flows, curtailment, and dispatch by carrier.",
+          parameters: {
+            type: "object",
+            properties: {
+              simulation_type: {
+                type: "string",
+                enum: ["opf", "curtailment", "tx_relief", "scarcity", "battery"],
+                description:
+                  "Type of simulation: opf=base dispatch+LMPs, curtailment=renewable curtailment analysis, tx_relief=transmission upgrade comparison, scarcity=thermal derate+load shedding, battery=24hr storage arbitrage OPF",
+              },
+              params: {
+                type: "object",
+                description:
+                  "Simulation parameters. opf: {system_load_mw, wind_cf, solar_cf, gas_price_mmbtu}. curtailment: adds west_wind_bonus_pct. tx_relief: adds upgrade_line (NORTH-HOUSTON|NORTH-WEST|NORTH-SOUTH|WEST-PAN|WEST-SOUTH|SOUTH-HOUSTON), extra_capacity_pct. scarcity: {system_load_mw (≤65000), wind_cf, solar_cf, gas_derate_pct, nuclear_derate_pct?}. battery: {system_load_mw, battery_mw, battery_mwh, price_delta_factor}",
+              },
+              rationale: {
+                type: "string",
+                description: "One-line explanation shown to the user while the simulation runs.",
+              },
+            },
+            required: ["simulation_type", "params", "rationale"],
           },
         },
       },
@@ -242,6 +278,35 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
             } catch (err) {
               toolResult = JSON.stringify({ error: String(err) });
               sendEvent({ type: "sql_error", error: String(err) });
+            }
+            apiMessages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult });
+          } else if (toolCall.function.name === "run_simulation") {
+            let toolResult: string;
+            try {
+              const args = JSON.parse(toolCall.function.arguments) as {
+                simulation_type: string;
+                params: Record<string, unknown>;
+                rationale: string;
+              };
+              req.log.info({ simulation_type: args.simulation_type, params: args.params }, "copilot simulation");
+              sendEvent({ type: "simulation_start", simulation_type: args.simulation_type, rationale: args.rationale ?? "Running OPF simulation..." });
+              const path = args.simulation_type.replace(/_/g, "-");
+              const resp = await fetch(`http://localhost:8083/${path}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(args.params),
+                signal: AbortSignal.timeout(60_000),
+              });
+              if (!resp.ok) {
+                const txt = await resp.text();
+                throw new Error(`PyPSA engine returned ${resp.status}: ${txt.slice(0, 200)}`);
+              }
+              const data = await resp.json() as Record<string, unknown>;
+              sendEvent({ type: "simulation_done", simulation_type: args.simulation_type, result: data });
+              toolResult = JSON.stringify(data);
+            } catch (err) {
+              toolResult = JSON.stringify({ error: String(err) });
+              sendEvent({ type: "simulation_error", error: String(err) });
             }
             apiMessages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult });
           }
