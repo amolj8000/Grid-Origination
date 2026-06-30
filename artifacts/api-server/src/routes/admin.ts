@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { ERCOT_BUSES, ERCOT_LINES } from "../data/ercot-topology";
 
 // In dev: process.cwd() = artifacts/api-server/ → workspace root is ../../
 // In production: process.cwd() = workspace root (node started from there)
@@ -305,6 +306,193 @@ router.post("/admin/reseed-all", requireAdminKey, (req, res) => {
     steps: scripts,
     note: "Runs: seed-candidates → assign-and-score-nodal → seed-transmission-lines. Takes ~15 min.",
   });
+});
+
+// ── POST /api/admin/reseed-topology ──────────────────────────────────────────
+// Seeds ercot_buses (340) + ercot_lines (1807) from embedded static data.
+// Safe to call multiple times — uses ON CONFLICT DO NOTHING.
+router.post("/admin/reseed-topology", requireAdminKey, async (req, res) => {
+  try {
+    const CHUNK = 50;
+
+    // Truncate first so we get a clean state
+    await db.execute(sql.raw(`TRUNCATE ercot_buses RESTART IDENTITY CASCADE`));
+    await db.execute(sql.raw(`TRUNCATE ercot_lines RESTART IDENTITY CASCADE`));
+
+    // Insert buses in chunks
+    let busesInserted = 0;
+    for (let i = 0; i < ERCOT_BUSES.length; i += CHUNK) {
+      const chunk = ERCOT_BUSES.slice(i, i + CHUNK);
+      const vals = chunk.map(b =>
+        `('${b.bus_name.replace(/'/g, "''")}', ${b.voltage_kv}, '${b.substation.replace(/'/g, "''")}', '${b.load_zone}', '${b.resource_node.replace(/'/g, "''")}', ${b.hub ? `'${b.hub}'` : 'NULL'}, ${b.lat}, ${b.lon})`
+      ).join(",");
+      await db.execute(sql.raw(
+        `INSERT INTO ercot_buses (bus_name, voltage_kv, substation, load_zone, resource_node, hub, lat, lon) VALUES ${vals}`
+      ));
+      busesInserted += chunk.length;
+    }
+
+    // Insert lines in chunks
+    let linesInserted = 0;
+    for (let i = 0; i < ERCOT_LINES.length; i += CHUNK) {
+      const chunk = ERCOT_LINES.slice(i, i + CHUNK);
+      const vals = chunk.map(l =>
+        `('${l.from_bus.replace(/'/g, "''")}', '${l.to_bus.replace(/'/g, "''")}', ${l.voltage_kv}, ${l.length_km}, ${l.x_pu}, ${l.s_nom_mw})`
+      ).join(",");
+      await db.execute(sql.raw(
+        `INSERT INTO ercot_lines (from_bus, to_bus, voltage_kv, length_km, x_pu, s_nom_mw) VALUES ${vals}`
+      ));
+      linesInserted += chunk.length;
+    }
+
+    res.json({
+      message: "ERCOT topology seeded from embedded data",
+      buses: busesInserted,
+      lines: linesInserted,
+    });
+  } catch (err) {
+    req.log.error({ err }, "admin/reseed-topology error");
+    res.status(500).json({ error: "internal_error", detail: String(err) });
+  }
+});
+
+// ── POST /api/admin/reseed-aeso ───────────────────────────────────────────────
+router.post("/admin/reseed-aeso", requireAdminKey, (req, res) => {
+  const jobId = spawnScript("seed-aeso-data");
+  res.status(202).json({
+    message: "AESO data seeding started in background",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Seeds pool_price, gen_mix, supply_demand, actual_forecast, 7day_capability, outages, constraint_events, corridors, queue (~21k rows). Takes ~2 min.",
+  });
+});
+
+// ── POST /api/admin/reseed-queue-projects ────────────────────────────────────
+router.post("/admin/reseed-queue-projects", requireAdminKey, (req, res) => {
+  const jobId = spawnScript("seed-queue-real");
+  res.status(202).json({
+    message: "Queue projects seeding started in background",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Seeds ERCOT/CAISO/PJM interconnection queue from public ISO data.",
+  });
+});
+
+// ── POST /api/admin/reseed-ercot-hourly ──────────────────────────────────────
+router.post("/admin/reseed-ercot-hourly", requireAdminKey, (req, res) => {
+  const jobId = spawnScript("seed-ercot-hourly");
+  res.status(202).json({
+    message: "ERCOT hourly hub/zone data seeding started",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Downloads CDR hourly data (DA+RT). Takes 10–20 min for full history.",
+  });
+});
+
+// ── POST /api/admin/reseed-caiso-hourly ──────────────────────────────────────
+router.post("/admin/reseed-caiso-hourly", requireAdminKey, (req, res) => {
+  const jobId = spawnScript("seed-caiso-hourly");
+  res.status(202).json({
+    message: "CAISO hourly hub data seeding started",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Downloads CAISO OASIS hourly data. Takes 5–10 min for full history.",
+  });
+});
+
+// ── POST /api/admin/prod-sync ─────────────────────────────────────────────────
+// Runs all critical seeds in sequence: topology (sync) → AESO → queue → scoring.
+// Call once after a fresh publish to fully populate prod from scratch.
+router.post("/admin/prod-sync", requireAdminKey, async (req, res) => {
+  const wsRoot = WORKSPACE_ROOT;
+  const jobId = `job-${++jobCounter}-${Date.now()}`;
+  const job: Job = {
+    script: "prod-sync",
+    status: "running",
+    exitCode: null,
+    output: ["=== prod-sync started ==="],
+    startedAt: new Date().toISOString(),
+  };
+  jobs.set(jobId, job);
+
+  // Step 1: seed topology synchronously (fast, embedded data)
+  try {
+    await db.execute(sql.raw(`TRUNCATE ercot_buses RESTART IDENTITY CASCADE`));
+    await db.execute(sql.raw(`TRUNCATE ercot_lines RESTART IDENTITY CASCADE`));
+    const CHUNK = 50;
+    for (let i = 0; i < ERCOT_BUSES.length; i += CHUNK) {
+      const chunk = ERCOT_BUSES.slice(i, i + CHUNK);
+      const vals = chunk.map(b =>
+        `('${b.bus_name.replace(/'/g, "''")}', ${b.voltage_kv}, '${b.substation.replace(/'/g, "''")}', '${b.load_zone}', '${b.resource_node.replace(/'/g, "''")}', ${b.hub ? `'${b.hub}'` : 'NULL'}, ${b.lat}, ${b.lon})`
+      ).join(",");
+      await db.execute(sql.raw(
+        `INSERT INTO ercot_buses (bus_name, voltage_kv, substation, load_zone, resource_node, hub, lat, lon) VALUES ${vals}`
+      ));
+    }
+    for (let i = 0; i < ERCOT_LINES.length; i += CHUNK) {
+      const chunk = ERCOT_LINES.slice(i, i + CHUNK);
+      const vals = chunk.map(l =>
+        `('${l.from_bus.replace(/'/g, "''")}', '${l.to_bus.replace(/'/g, "''")}', ${l.voltage_kv}, ${l.length_km}, ${l.x_pu}, ${l.s_nom_mw})`
+      ).join(",");
+      await db.execute(sql.raw(
+        `INSERT INTO ercot_lines (from_bus, to_bus, voltage_kv, length_km, x_pu, s_nom_mw) VALUES ${vals}`
+      ));
+    }
+    job.output.push(`✓ Topology: ${ERCOT_BUSES.length} buses, ${ERCOT_LINES.length} lines`);
+  } catch (err) {
+    job.output.push(`✗ Topology failed: ${String(err)}`);
+    job.status = "failed"; job.exitCode = 1;
+    job.finishedAt = new Date().toISOString();
+    res.status(202).json({ message: "prod-sync started (topology failed early)", jobId, statusUrl: `/api/admin/jobs/${jobId}` });
+    return;
+  }
+
+  // Respond immediately — remaining steps run in background
+  res.status(202).json({
+    message: "prod-sync started — topology done, AESO+queue seeding in background",
+    jobId,
+    statusUrl: `/api/admin/jobs/${jobId}`,
+    note: "Poll statusUrl. Full sync takes ~5 min. Then call reseed-ercot-hourly + reseed-caiso-hourly for time-series data (takes 20–30 min).",
+  });
+
+  // Step 2: seed AESO data, then queue, then score candidates — all sequential
+  const bgScripts = ["seed-aeso-data", "seed-queue-real", "assign-and-score-nodal"];
+  let idx = 0;
+
+  function runNext() {
+    if (idx >= bgScripts.length) {
+      job.status = "completed"; job.exitCode = 0;
+      job.finishedAt = new Date().toISOString();
+      job.output.push("=== prod-sync complete ===");
+      return;
+    }
+    const scriptName = bgScripts[idx++];
+    job.output.push(`\n=== Starting: ${scriptName} ===`);
+    const proc = spawn("pnpm", ["--filter", "@workspace/scripts", "run", scriptName], {
+      cwd: wsRoot,
+      env: { ...process.env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    proc.stdout?.on("data", (d: Buffer) => {
+      const lines = d.toString().split("\n").filter((l: string) => l.trim());
+      job.output.push(...lines);
+      if (job.output.length > 1000) job.output = job.output.slice(-1000);
+    });
+    proc.stderr?.on("data", (d: Buffer) => {
+      const lines = d.toString().split("\n").filter((l: string) => l.trim());
+      job.output.push(...lines.map((l: string) => `[err] ${l}`));
+    });
+    proc.on("close", (code: number | null) => {
+      if (code !== 0) {
+        job.output.push(`=== FAILED: ${scriptName} (exit ${code}) — continuing ===`);
+      } else {
+        job.output.push(`=== Done: ${scriptName} ===`);
+      }
+      runNext();
+    });
+  }
+
+  runNext();
 });
 
 // ── POST /api/admin/upsert-ercot-hub-stats ───────────────────────────────────
