@@ -56,8 +56,11 @@ import type {
   GetErcotBusLoadParams,
   GetErcotBusShiftFactorsParams,
   GetErcotZoneLoadHourlyParams,
+  GetTemperatureParams,
+  GetTemperatureStatsParams,
   GetTopCandidatesParams,
   HealthStatus,
+  HourlyTemperature,
   ListCaisoNodeStatsParams,
   ListCandidatesParams,
   ListErcotNodalStatsParams,
@@ -71,6 +74,7 @@ import type {
   QueueSummary,
   Screening,
   ScreeningInput,
+  TemperatureStat,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -3874,6 +3878,200 @@ export function useGetErcotBusLoad<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetErcotBusLoadQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Hourly temperatures by zone for a given ISO and calendar month
+ */
+export const getGetTemperatureUrl = (params?: GetTemperatureParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/temperature?${stringifiedParams}`
+    : `/api/temperature`;
+};
+
+export const getTemperature = async (
+  params?: GetTemperatureParams,
+  options?: RequestInit,
+): Promise<HourlyTemperature[]> => {
+  return customFetch<HourlyTemperature[]>(getGetTemperatureUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTemperatureQueryKey = (params?: GetTemperatureParams) => {
+  return [`/api/temperature`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTemperatureQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTemperature>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperature>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTemperatureQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTemperature>>> = ({
+    signal,
+  }) => getTemperature(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTemperature>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTemperatureQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTemperature>>
+>;
+export type GetTemperatureQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Hourly temperatures by zone for a given ISO and calendar month
+ */
+
+export function useGetTemperature<
+  TData = Awaited<ReturnType<typeof getTemperature>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperature>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTemperatureQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Monthly avg/min/max temperature per zone
+ */
+export const getGetTemperatureStatsUrl = (
+  params?: GetTemperatureStatsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/temperature/stats?${stringifiedParams}`
+    : `/api/temperature/stats`;
+};
+
+export const getTemperatureStats = async (
+  params?: GetTemperatureStatsParams,
+  options?: RequestInit,
+): Promise<TemperatureStat[]> => {
+  return customFetch<TemperatureStat[]>(getGetTemperatureStatsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTemperatureStatsQueryKey = (
+  params?: GetTemperatureStatsParams,
+) => {
+  return [`/api/temperature/stats`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTemperatureStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTemperatureStats>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureStatsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperatureStats>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTemperatureStatsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTemperatureStats>>
+  > = ({ signal }) =>
+    getTemperatureStats(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTemperatureStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTemperatureStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTemperatureStats>>
+>;
+export type GetTemperatureStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Monthly avg/min/max temperature per zone
+ */
+
+export function useGetTemperatureStats<
+  TData = Awaited<ReturnType<typeof getTemperatureStats>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureStatsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperatureStats>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTemperatureStatsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

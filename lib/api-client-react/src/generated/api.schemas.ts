@@ -681,6 +681,24 @@ export interface AesoDashboard {
   latestDate?: string | null;
 }
 
+export interface HourlyTemperature {
+  zone: string;
+  day: number;
+  hour: number;
+  tempF: number;
+  tempC: number;
+}
+
+export interface TemperatureStat {
+  zone: string;
+  year: number;
+  month: number;
+  avgF: number;
+  minF: number;
+  maxF: number;
+  count: number;
+}
+
 export type ListCandidatesParams = {
   market?: ListCandidatesMarket;
   assetType?: ListCandidatesAssetType;
@@ -884,4 +902,14 @@ export type GetErcotBusLoadParams = {
   bus: string;
   year?: number;
   month?: number;
+};
+
+export type GetTemperatureParams = {
+  iso?: string;
+  year?: number;
+  month?: number;
+};
+
+export type GetTemperatureStatsParams = {
+  iso?: string;
 };

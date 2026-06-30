@@ -1203,3 +1203,41 @@ export const GetErcotBusLoadResponseItem = zod.object({
   method: zod.string(),
 });
 export const GetErcotBusLoadResponse = zod.array(GetErcotBusLoadResponseItem);
+
+/**
+ * @summary Hourly temperatures by zone for a given ISO and calendar month
+ */
+export const GetTemperatureQueryParams = zod.object({
+  iso: zod.coerce.string().optional(),
+  year: zod.coerce.number().optional(),
+  month: zod.coerce.number().optional(),
+});
+
+export const GetTemperatureResponseItem = zod.object({
+  zone: zod.string(),
+  day: zod.number(),
+  hour: zod.number(),
+  tempF: zod.number(),
+  tempC: zod.number(),
+});
+export const GetTemperatureResponse = zod.array(GetTemperatureResponseItem);
+
+/**
+ * @summary Monthly avg/min/max temperature per zone
+ */
+export const GetTemperatureStatsQueryParams = zod.object({
+  iso: zod.coerce.string().optional(),
+});
+
+export const GetTemperatureStatsResponseItem = zod.object({
+  zone: zod.string(),
+  year: zod.number(),
+  month: zod.number(),
+  avgF: zod.number(),
+  minF: zod.number(),
+  maxF: zod.number(),
+  count: zod.number(),
+});
+export const GetTemperatureStatsResponse = zod.array(
+  GetTemperatureStatsResponseItem,
+);

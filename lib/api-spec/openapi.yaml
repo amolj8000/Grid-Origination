@@ -924,6 +924,42 @@ paths:
                 items:
                   $ref: "#/components/schemas/ErcotBusLoadHour"
 
+  /temperature:
+    get:
+      operationId: getTemperature
+      tags: [temperature]
+      summary: Hourly temperatures by zone for a given ISO and calendar month
+      parameters:
+        - { name: iso,   in: query, required: false, schema: { type: string } }
+        - { name: year,  in: query, required: false, schema: { type: integer } }
+        - { name: month, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Hourly temperature rows (zone × day × hour)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HourlyTemperature"
+
+  /temperature/stats:
+    get:
+      operationId: getTemperatureStats
+      tags: [temperature]
+      summary: Monthly avg/min/max temperature per zone
+      parameters:
+        - { name: iso, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Monthly temperature statistics per zone
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TemperatureStat"
+
 components:
   schemas:
     HealthStatus:
@@ -1688,4 +1724,26 @@ components:
         gasPctLastMonth: { type: ["number", "null"] }
         latestDate: { type: ["string", "null"] }
       required: [spikesLast30Days, activeOutageCount, queueProjectCount]
+
+    HourlyTemperature:
+      type: object
+      properties:
+        zone:  { type: string }
+        day:   { type: integer }
+        hour:  { type: integer }
+        tempF: { type: number }
+        tempC: { type: number }
+      required: [zone, day, hour, tempF, tempC]
+
+    TemperatureStat:
+      type: object
+      properties:
+        zone:  { type: string }
+        year:  { type: integer }
+        month: { type: integer }
+        avgF:  { type: number }
+        minF:  { type: number }
+        maxF:  { type: number }
+        count: { type: integer }
+      required: [zone, year, month, avgF, minF, maxF, count]
 

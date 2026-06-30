@@ -6,12 +6,17 @@ ercot_lines DB tables (seeded by seed_topology.py), then assigns the 787 real
 EIA 860 ERCOT generators (from the candidates table) to their nearest bus via
 Haversine.
 
-Tier 1 fallback (5-bus hardcoded) is used when DB tables are empty.
+Bus load assignment (Tier 2):
+  Priority 1 — PTDF shift factors (ercot_bus_shift_factors table):
+    load_mw[bus] = zone_load_mw[eia_zone] × shift_factor[bus]
+  Priority 2 — Capacity-weighted fallback (when shift factors unavailable):
+    load_mw[bus] = system_load_mw × zone_share × (bus_cap / zone_cap)
 
-Carrier stack (same as Tier 1):
-  nuclear: $5 / gas_cc: $26 / gas_ct: $35 / hydro: $2 / biomass: $15
-  wind, solar, storage: $0 (zero-marginal; PTC credit)
-  peaker: $499 (emergency; prevents OPF infeasibility)
+Zone loads:
+  Historical mode: actual EIA-930 values from ercot_load_by_zone (run_opf passes them in)
+  Synthetic mode:  system_load_mw × EIA_ZONE_SYNTHETIC_SHARE
+
+Tier 1 fallback (5-bus hardcoded) is used when DB tables are empty.
 """
 
 import os, math, logging
@@ -22,10 +27,8 @@ from typing import Any
 
 logger = logging.getLogger("pypsa-engine")
 
-# ── Constants ────────────────────────────────────────────────────────────────
-
-HEAT_RATE_CC  = 7_500    # BTU/kWh
-HEAT_RATE_CT  = 10_000   # BTU/kWh
+HEAT_RATE_CC  = 7_500
+HEAT_RATE_CT  = 10_000
 
 BASE_MC: dict[str, float] = {
     "nuclear": 5.0, "hydro": 2.0, "biomass": 15.0,
@@ -37,7 +40,7 @@ MAX_CF: dict[str, float] = {
     "wind": 0.35, "solar": 0.22, "storage": 1.0, "hydro": 1.0, "biomass": 1.0,
 }
 
-# Load fraction per ERCOT settlement zone (calibrated to ISO data)
+# Legacy ERCOT LZ zone share — only used for Tier-2 capacity-weighted fallback
 ZONE_LOAD_SHARE: dict[str, float] = {
     "LZ_HOUSTON": 0.335,
     "LZ_NORTH":   0.215,
@@ -46,7 +49,20 @@ ZONE_LOAD_SHARE: dict[str, float] = {
     "LZ_AEN":     0.065,
     "LZ_CPS":     0.060,
     "LZ_LCRA":    0.025,
-    None:          0.025,  # unmapped buses
+    None:          0.025,
+}
+
+# EIA sub-BA zone share of ERCOT system load (calibrated to EIA-930 averages)
+# Used when real zone loads are unavailable (synthetic mode + shift factors)
+EIA_ZONE_SYNTHETIC_SHARE: dict[str, float] = {
+    "COAS": 0.330,  # Houston metro
+    "NCEN": 0.215,  # Dallas / Fort Worth
+    "SCEN": 0.170,  # San Antonio / Austin
+    "NRTH": 0.075,  # North Texas
+    "SOUT": 0.080,  # South Texas
+    "FWES": 0.065,  # Far West / Permian
+    "WEST": 0.035,  # West Texas / Lubbock
+    "EAST": 0.030,  # East Texas
 }
 
 
@@ -69,12 +85,10 @@ def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # ── DB topology loader ────────────────────────────────────────────────────────
 
 def _load_topology_from_db() -> tuple[list[dict], list[dict]]:
-    """Return (buses, lines) from ercot_buses/ercot_lines. Empty lists if missing."""
     try:
         import psycopg2
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
         cur = conn.cursor()
-
         cur.execute("""
             SELECT bus_name, load_zone, hub, lat, lon, location_source
             FROM ercot_buses
@@ -86,7 +100,6 @@ def _load_topology_from_db() -> tuple[list[dict], list[dict]]:
              "lat": float(r[3]), "lon": float(r[4]), "src": r[5]}
             for r in cur.fetchall()
         ]
-
         cur.execute("""
             SELECT from_bus, to_bus, length_km, x_pu, s_nom_mw
             FROM ercot_lines
@@ -99,7 +112,6 @@ def _load_topology_from_db() -> tuple[list[dict], list[dict]]:
              "s_nom": float(r[4])}
             for r in cur.fetchall()
         ]
-
         conn.close()
         return buses, lines
     except Exception as e:
@@ -107,9 +119,27 @@ def _load_topology_from_db() -> tuple[list[dict], list[dict]]:
         return [], []
 
 
+def _load_shift_factors_from_db() -> dict[str, dict]:
+    """Load PTDF-derived bus shift factors from ercot_bus_shift_factors.
+    Returns {bus_name: {"eia_zone": str, "shift_factor": float}} or {} if unavailable."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT bus_name, eia_zone, shift_factor
+            FROM ercot_bus_shift_factors
+            WHERE shift_factor > 0
+        """)
+        rows = cur.fetchall()
+        conn.close()
+        return {r[0]: {"eia_zone": r[1], "shift_factor": float(r[2])} for r in rows}
+    except Exception as e:
+        logger.warning("Could not load shift factors from DB: %s", e)
+        return {}
+
+
 def _load_zone_data_from_db(year: int, month: int, day: int, hour: int) -> dict[str, float] | None:
-    """Load actual zone loads from ercot_load_by_zone for a specific hour.
-    Returns {zone: load_mw} dict, or None if data not available."""
     try:
         import psycopg2
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
@@ -130,8 +160,6 @@ def _load_zone_data_from_db(year: int, month: int, day: int, hour: int) -> dict[
 
 
 def _load_fuel_mix_from_db(year: int, month: int, day: int, hour: int) -> dict[str, float] | None:
-    """Load actual fuel mix from ercot_fuel_mix for a specific hour.
-    Returns {fuel_type: gen_mw} dict, or None if data not available."""
     try:
         import psycopg2
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
@@ -152,8 +180,6 @@ def _load_fuel_mix_from_db(year: int, month: int, day: int, hour: int) -> dict[s
 
 
 def _derive_cfs_from_fuel_mix(fuel_mix: dict[str, float], year: int) -> dict[str, float]:
-    """Convert fuel mix (actual generation MW) to capacity factors for OPF.
-    Uses known installed capacity figures calibrated to ERCOT CDR data."""
     wind_cap  = 40_000 if year <= 2024 else (45_000 if year == 2025 else 49_000)
     solar_cap = 24_000 if year <= 2024 else (33_000 if year == 2025 else 42_000)
     wind_mw  = fuel_mix.get("wind",  0.0)
@@ -164,7 +190,6 @@ def _derive_cfs_from_fuel_mix(fuel_mix: dict[str, float], year: int) -> dict[str
 
 
 def _load_eia860_generators() -> list[dict]:
-    """Load EIA 860 ERCOT generators from candidates table."""
     try:
         import psycopg2
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
@@ -283,21 +308,31 @@ def _build_tier1(system_load_mw, wind_cf, solar_cf, gas_price):
 
 # ── Tier 2 builder ────────────────────────────────────────────────────────────
 
-def _build_tier2(buses: list[dict], lines: list[dict],
-                 generators: list[dict],
-                 system_load_mw: float, wind_cf: float,
-                 solar_cf: float, gas_price: float) -> pypsa.Network:
-    """Build a PyPSA network from real 340-bus topology + EIA 860 generators."""
+def _build_tier2(
+    buses: list[dict],
+    lines: list[dict],
+    generators: list[dict],
+    system_load_mw: float,
+    wind_cf: float,
+    solar_cf: float,
+    gas_price: float,
+    zone_loads: dict[str, float] | None = None,
+    shift_factors: dict[str, dict] | None = None,
+) -> pypsa.Network:
+    """Build a PyPSA network from real 340-bus topology + EIA 860 generators.
+
+    Bus load assignment (in priority order):
+      1. PTDF shift factors × EIA zone loads  (most physically accurate)
+      2. Capacity-weighted within LZ zone      (fallback)
+    """
     n = pypsa.Network()
     n.set_snapshots(pd.DatetimeIndex(["2025-07-15 15:00"]))
 
     bus_set = {b["name"] for b in buses}
 
-    # ── Add buses ──────────────────────────────────────────────────────────────
     for b in buses:
         n.add("Bus", b["name"], x=b["lon"], y=b["lat"])
 
-    # ── Add lines ─────────────────────────────────────────────────────────────
     for i, l in enumerate(lines):
         if l["from"] not in bus_set or l["to"] not in bus_set:
             continue
@@ -305,7 +340,6 @@ def _build_tier2(buses: list[dict], lines: list[dict],
               s_nom=l["s_nom"], x=l["x_pu"])
 
     # ── Assign EIA 860 generators to nearest bus ───────────────────────────────
-    # Build bus array for fast Haversine
     bus_arr = [(b["name"], b["lat"], b["lon"], b["zone"]) for b in buses]
 
     def nearest_bus(lat: float, lon: float) -> str:
@@ -316,7 +350,6 @@ def _build_tier2(buses: list[dict], lines: list[dict],
                 best_name, best_d = name, d
         return best_name
 
-    # Aggregate generators by (bus, carrier)
     bus_gen: dict[tuple[str, str], float] = {}
     for g in generators:
         carrier = _asset_type_to_carrier(g["asset_type"])
@@ -332,35 +365,73 @@ def _build_tier2(buses: list[dict], lines: list[dict],
         n.add("Generator", f"{bus}-{carrier}", bus=bus, carrier=carrier,
               p_nom=mw, marginal_cost=mc, p_max_pu=cf, p_min_pu=0.0)
 
-    # ── Assign load proportional to zone share × bus capacity share ─────────────
-    # Compute total installed capacity per zone
-    zone_cap: dict[str | None, float] = {}
+    # ── Assign bus loads ───────────────────────────────────────────────────────
     bus_cap: dict[str, float] = {}
     for (bus, carrier), mw in bus_gen.items():
         bus_cap[bus] = bus_cap.get(bus, 0.0) + mw
 
     bus_zone = {b["name"]: b["zone"] for b in buses}
-    for bus, cap in bus_cap.items():
-        z = bus_zone.get(bus)
-        zone_cap[z] = zone_cap.get(z, 0.0) + cap
 
-    for b in buses:
-        zone = b["zone"]
-        zone_share = ZONE_LOAD_SHARE.get(zone, 0.025)
-        bus_total_cap = bus_cap.get(b["name"], 0.0)
-        zone_total_cap = zone_cap.get(zone, 1.0)
-        cap_frac = bus_total_cap / max(zone_total_cap, 1.0) if zone_total_cap > 0 else 0.0
-        load_mw = system_load_mw * zone_share * cap_frac
-        if load_mw < 1.0:
-            continue
-        n.add("Load", f"{b['name']}-load", bus=b["name"], p_set=load_mw)
+    use_shift_factors = bool(shift_factors)
+    load_assigned_count = 0
+
+    if use_shift_factors:
+        # Path 1: PTDF shift factors × EIA zone loads
+        # Compute EIA zone loads (real if provided, else synthetic share)
+        eia_zone_loads: dict[str, float] = {}
+        if zone_loads:
+            # zone_loads is {EIA_zone_code: mw} from ercot_load_by_zone
+            eia_zone_loads = zone_loads
+        else:
+            # Synthetic: distribute system_load_mw by EIA zone share
+            for zone_code, share in EIA_ZONE_SYNTHETIC_SHARE.items():
+                eia_zone_loads[zone_code] = system_load_mw * share
+
+        for b in buses:
+            bname = b["name"]
+            sf_entry = shift_factors.get(bname)
+            if sf_entry is None:
+                continue
+            eia_zone = sf_entry["eia_zone"]
+            sf = sf_entry["shift_factor"]
+            zone_load_mw = eia_zone_loads.get(eia_zone, 0.0)
+            load_mw = zone_load_mw * sf
+            if load_mw < 0.5:
+                continue
+            n.add("Load", f"{bname}-load", bus=bname, p_set=load_mw)
+            load_assigned_count += 1
+
+        logger.info(
+            "Tier 2 PTDF load: %d buses loaded, total=%.0f MW (real_zone_data=%s)",
+            load_assigned_count, sum(eia_zone_loads.values()), zone_loads is not None
+        )
+
+    else:
+        # Path 2: Capacity-weighted within ERCOT LZ zone (legacy fallback)
+        zone_cap: dict[str | None, float] = {}
+        for bus, cap in bus_cap.items():
+            z = bus_zone.get(bus)
+            zone_cap[z] = zone_cap.get(z, 0.0) + cap
+
+        for b in buses:
+            zone = b["zone"]
+            zone_share = ZONE_LOAD_SHARE.get(zone, 0.025)
+            bus_total_cap = bus_cap.get(b["name"], 0.0)
+            zone_total_cap = zone_cap.get(zone, 1.0)
+            cap_frac = bus_total_cap / max(zone_total_cap, 1.0) if zone_total_cap > 0 else 0.0
+            load_mw = system_load_mw * zone_share * cap_frac
+            if load_mw < 1.0:
+                continue
+            n.add("Load", f"{b['name']}-load", bus=b["name"], p_set=load_mw)
+            load_assigned_count += 1
+
+        logger.info("Tier 2 capacity-weighted load: %d buses loaded", load_assigned_count)
 
     # ── Emergency peakers at major zone hubs ──────────────────────────────────
     PEAKER_ZONES = {
         "LZ_HOUSTON": 30000, "LZ_NORTH": 20000, "LZ_SOUTH": 20000,
         "LZ_WEST": 15000, "LZ_AEN": 8000, "LZ_CPS": 8000, "LZ_LCRA": 5000,
     }
-    # Place one peaker at the highest-capacity bus per zone
     zone_top_bus: dict[str, tuple[str, float]] = {}
     for bus, cap in bus_cap.items():
         zone = bus_zone.get(bus)
@@ -382,16 +453,24 @@ def build_network(
     wind_cf: float = 0.35,
     solar_cf: float = 0.22,
     gas_price_mmbtu: float = 3.50,
+    zone_loads: dict[str, float] | None = None,
 ) -> pypsa.Network:
     buses, lines = _load_topology_from_db()
     if not buses:
         logger.info("Using Tier 1 (5-bus fallback)")
         return _build_tier1(system_load_mw, wind_cf, solar_cf, gas_price_mmbtu)
     generators = _load_eia860_generators()
-    logger.info("Tier 2: %d buses, %d lines, %d generators",
-                len(buses), len(lines), len(generators))
-    return _build_tier2(buses, lines, generators,
-                        system_load_mw, wind_cf, solar_cf, gas_price_mmbtu)
+    shift_factors = _load_shift_factors_from_db()
+    logger.info(
+        "Tier 2: %d buses, %d lines, %d generators, %d shift factors",
+        len(buses), len(lines), len(generators), len(shift_factors)
+    )
+    return _build_tier2(
+        buses, lines, generators,
+        system_load_mw, wind_cf, solar_cf, gas_price_mmbtu,
+        zone_loads=zone_loads,
+        shift_factors=shift_factors or None,
+    )
 
 
 def run_opf(
@@ -422,8 +501,9 @@ def run_opf(
                 solar_cf = cfs["solar_cf"]
                 data_source = f"historical:{simulation_datetime}"
                 logger.info(
-                    "Historical mode %s: load=%.0f MW wind_cf=%.3f solar_cf=%.3f",
-                    simulation_datetime, system_load_mw, wind_cf, solar_cf
+                    "Historical mode %s: load=%.0f MW wind_cf=%.3f solar_cf=%.3f zones=%s",
+                    simulation_datetime, system_load_mw, wind_cf, solar_cf,
+                    {z: round(v, 0) for z, v in actual_zone_loads.items()}
                 )
             else:
                 logger.warning("No DB data for %s — using synthetic params", simulation_datetime)
@@ -432,7 +512,12 @@ def run_opf(
 
     buses_db, lines_db = _load_topology_from_db()
     tier = 2 if buses_db else 1
-    n = build_network(system_load_mw, wind_cf, solar_cf, gas_price_mmbtu)
+
+    # Pass real zone loads into build_network so Tier 2 can use PTDF shift factors
+    n = build_network(
+        system_load_mw, wind_cf, solar_cf, gas_price_mmbtu,
+        zone_loads=actual_zone_loads,
+    )
 
     try:
         n.optimize(solver_name="highs")
@@ -460,16 +545,12 @@ def run_opf(
             all_dispatch[g] = 0.0
 
     def _get_load_mw(load_name: str) -> float:
-        """Read static or time-varying p_set from a PyPSA Load object."""
         if load_name not in n.loads.index:
             return 0.0
-        # After optimisation, n.loads_t.p holds realised consumption
         if hasattr(n, "loads_t") and load_name in getattr(n.loads_t, "p", pd.DataFrame()).columns:
             return float(n.loads_t.p[load_name].iloc[0])
-        # Fall back to p_set (static or time-series)
         if load_name in getattr(n.loads_t, "p_set", pd.DataFrame()).columns:
             return float(n.loads_t.p_set[load_name].iloc[0])
-        # Static p_set stored in the component table
         return float(n.loads.at[load_name, "p_set"])
 
     # ── Bus results ───────────────────────────────────────────────────────────
@@ -588,7 +669,6 @@ def get_topology() -> dict[str, Any]:
     buses_db, lines_db = _load_topology_from_db()
 
     if not buses_db:
-        # Tier 1 fallback topology
         return {
             "model_version": "tier1_eia860",
             "tier": 1,

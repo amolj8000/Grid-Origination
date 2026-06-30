@@ -725,4 +725,73 @@ router.get("/ercot/bus-load", async (req, res) => {
   }
 });
 
+// ── Temperature endpoints ─────────────────────────────────────────────────────
+
+// GET /api/temperature?iso=ERCOT&year=2024&month=7
+// Returns all zone hourly temperatures for the given ISO + month
+router.get("/temperature", async (req, res) => {
+  try {
+    const iso   = String(req.query.iso   || "ERCOT").toUpperCase();
+    const year  = Number(req.query.year  || 2025);
+    const month = Number(req.query.month || 7);
+    if (!["ERCOT", "CAISO"].includes(iso)) {
+      return res.status(400).json({ error: "bad_request", message: "iso must be ERCOT or CAISO" });
+    }
+    const rows = await db.execute<{
+      zone: string; day: number; hour: number; temp_f: number; temp_c: number;
+    }>(sql`
+      SELECT zone, day, hour, temp_f, temp_c
+      FROM   hourly_temperatures
+      WHERE  iso   = ${iso}
+        AND  year  = ${year}
+        AND  month = ${month}
+      ORDER  BY zone, day, hour
+    `);
+    res.json(rows.rows.map(r => ({
+      zone:  r.zone,
+      day:   Number(r.day),
+      hour:  Number(r.hour),
+      tempF: Number(r.temp_f),
+      tempC: Number(r.temp_c),
+    })));
+  } catch (err) {
+    req.log.error({ err }, "temperature error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// GET /api/temperature/stats?iso=ERCOT
+// Monthly avg/min/max per zone across all available data
+router.get("/temperature/stats", async (req, res) => {
+  try {
+    const iso = String(req.query.iso || "ERCOT").toUpperCase();
+    const rows = await db.execute<{
+      zone: string; year: number; month: number;
+      avg_f: number; min_f: number; max_f: number; count: number;
+    }>(sql`
+      SELECT zone, year, month,
+             ROUND(AVG(temp_f)::numeric, 1) AS avg_f,
+             ROUND(MIN(temp_f)::numeric, 1) AS min_f,
+             ROUND(MAX(temp_f)::numeric, 1) AS max_f,
+             COUNT(*) AS count
+      FROM   hourly_temperatures
+      WHERE  iso = ${iso}
+      GROUP  BY zone, year, month
+      ORDER  BY zone, year, month
+    `);
+    res.json(rows.rows.map(r => ({
+      zone:  r.zone,
+      year:  Number(r.year),
+      month: Number(r.month),
+      avgF:  Number(r.avg_f),
+      minF:  Number(r.min_f),
+      maxF:  Number(r.max_f),
+      count: Number(r.count),
+    })));
+  } catch (err) {
+    req.log.error({ err }, "temperature/stats error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 export default router;
