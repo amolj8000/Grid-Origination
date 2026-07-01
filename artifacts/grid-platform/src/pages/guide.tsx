@@ -29,9 +29,9 @@ const USE_CASES = [
     color: C.teal,
     badge: "Use Case 1",
     title: "PPA / Offtake Origination",
-    subtitle: "Source existing projects for Walmart energy hedging",
+    subtitle: "Source existing projects for energy offtake",
     description:
-      "Identify renewable energy projects (wind, solar, storage) that can enter into Power Purchase Agreements or offtake contracts with Walmart to hedge a portion of their electricity portfolio across ERCOT, CAISO, and PJM.",
+      "Identify renewable energy projects (wind, solar, storage) that can enter into Power Purchase Agreements or offtake contracts to hedge a portion of an electricity portfolio across ERCOT, CAISO, and PJM.",
     steps: [
       "Pull all operating projects from EIA 860 onto the Map Workspace",
       "Screen projects by capacity, technology, ISO, COD, and sponsor quality",
@@ -48,7 +48,7 @@ const USE_CASES = [
     color: C.amber,
     badge: "Use Case 2",
     title: "New Project Siting via Queue Analysis",
-    subtitle: "Identify where Walmart can commission a greenfield project",
+    subtitle: "Identify where a greenfield project can be commissioned",
     description:
       "Analyze the interconnection queue to find regions where a new project could be sited with acceptable queue position, limited congestion/curtailment competition, and favorable basis. Some areas already have heavy pipeline; others represent opportunity.",
     steps: [
@@ -374,7 +374,7 @@ export default function PlatformGuide() {
         </div>
         <h1 className="text-3xl font-bold tracking-tight">Grid Origination Intelligence Platform</h1>
         <p className="text-muted-foreground mt-1 max-w-3xl">
-          A power market siting and PPA origination tool purpose-built for Walmart's energy procurement team.
+          A power market siting and PPA origination intelligence tool for energy procurement teams.
           Identify, screen, and rank renewable energy projects as potential offtake candidates — and assess where
           new greenfield projects can be sited with favorable queue position and manageable risk.
         </p>

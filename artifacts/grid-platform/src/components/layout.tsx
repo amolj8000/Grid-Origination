@@ -79,7 +79,7 @@ const sidebarEntries: NavEntry[] = [
   },
   { title: "Interconnection Queue", href: "/queue",      icon: Database },
   { title: "Temperature Data",      href: "/weather",    icon: Thermometer },
-  { title: "PPA Calculator",        href: "/ppa",        icon: Calculator },
+  { title: "NPV Calculator",         href: "/ppa",        icon: Calculator },
   { title: "REC Analysis",          href: "/recs",       icon: Leaf },
   { title: "Q&A Copilot",           href: "/qa",         icon: MessageSquare },
   { title: "Export Center",         href: "/export",     icon: Download },

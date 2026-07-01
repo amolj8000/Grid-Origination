@@ -24,7 +24,7 @@ const SECTIONS = [
     title: "Problem Statement",
     content: `ERCOT settlement point and resource node prices exhibit persistent congestion patterns driven by transmission constraints, 
     wind and solar generation concentration in West Texas, and correlated load events. For renewable developers, IPPs, and corporate 
-    offtakers (like Walmart), understanding where basis risk concentrates — and when — is material to project siting, PPA pricing, 
+    offtakers, understanding where basis risk concentrates — and when — is material to project siting, PPA pricing, 
     and portfolio risk management. This feature quantifies that risk using real ERCOT market data from 2024 onward.`,
   },
   {
@@ -108,7 +108,7 @@ const SECTIONS = [
     Renewable developers: Identify which nodes carry the highest basis risk before siting a new wind or solar project. 
     A 1,000 MW project at a node with persistent $15/MWh negative basis loses ~$131M/year in realized revenue vs DAM price.
 
-    Corporate offtakers (Walmart): Evaluate which PPA nodes create the most versus least basis exposure. Choose settlement 
+    Corporate offtakers: Evaluate which PPA nodes create the most versus least basis exposure. Choose settlement 
     points with historically stable DA/RT spreads to reduce P&L volatility.
 
     Traders and analysts: Understand where congestion concentrates seasonally, allowing tactical hedging positions or 

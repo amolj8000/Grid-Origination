@@ -105,9 +105,9 @@ export default function PpaCalculator() {
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-900 text-slate-100">
       <div>
-        <h1 className="text-2xl font-bold text-white">PPA NPV Calculator</h1>
+        <h1 className="text-2xl font-bold text-white">NPV Calculator</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Model a VPPA (Financial PPA) from Walmart's perspective — net cashflows = (market price − strike) × contracted volume
+          Model a VPPA (Financial PPA) — net cashflows = (market price − strike) × contracted volume, discounted at WACC
         </p>
       </div>
 
@@ -223,7 +223,7 @@ export default function PpaCalculator() {
                 </div>
                 {result.baseCapturePriceMwh < result.inputs.strike && (
                   <div className="mt-3 text-xs text-amber-400 bg-amber-900/20 border border-amber-800/40 rounded px-3 py-2">
-                    ⚠ Strike (${result.inputs.strike}) exceeds base capture price (${result.baseCapturePriceMwh}/MWh) — Walmart carries hedge cost at P50
+                    ⚠ Strike (${result.inputs.strike}) exceeds base capture price (${result.baseCapturePriceMwh}/MWh) — offtaker carries hedge cost at P50
                   </div>
                 )}
               </div>

@@ -239,7 +239,7 @@ export default function CaisoHourly() {
             <AlertCircle className="h-4 w-4 text-amber-400 shrink-0" />
             <p className="text-xs text-amber-300">
               <span className="font-semibold">Duck curve effect:</span> SP15 solar generation peaks between 10a–2p when DA prices are lowest ({summary.troughHour} @ ${summary.troughPrice}/MWh).
-              Capture ratio {summary.captureRatio}% — Walmart's SP15 PPAs (Pivot Energy 72 MWac) face this shape mismatch.
+              Capture ratio {summary.captureRatio}% — SP15 solar PPAs face this shape mismatch vs flat-price contracts.
               Battery storage co-location can shift capture to 6p–8p peak.
             </p>
           </CardContent>
@@ -394,7 +394,7 @@ export default function CaisoHourly() {
             <span className="text-amber-400 font-medium">Data source:</span> CAISO OASIS public API — PRC_LMP query.
             DA prices from DAM (Day-Ahead Market). RT prices from HASP (Hour-Ahead Scheduling Process, 15-min intervals averaged to hourly).
             Nodes: TH_SP15_GEN-APND (SP15 Southern CA), TH_NP15_GEN-APND (NP15 Northern CA), TH_ZP26_GEN-APND (ZP26 Bay Area).
-            Note: SP15 solar capture ratio typically 75–85% of DA due to midday duck curve curtailment — directly impacts Walmart's Pivot Energy (72 MWac, CA/CO) and Solar Landscape VPPA settlements.
+            Note: SP15 solar capture ratio typically 75–85% of DA due to midday duck curve curtailment — directly impacts the economics of solar VPPA settlements in Southern California.
           </p>
         </CardContent>
       </Card>

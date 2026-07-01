@@ -44,7 +44,7 @@ const OBJECTIVES = [
   {
     id: "corporate_hedge",
     label: "Corporate Load Hedge",
-    desc: "Reliability for Walmart load matching — curtailment 30% · congestion 22% · basis 18% · interconnect risk 12% · capture price 8% · capacity 7% · mkt revenue 3%",
+    desc: "Reliability for corporate load hedging — curtailment 30% · congestion 22% · basis 18% · interconnect risk 12% · capture price 8% · capacity 7% · mkt revenue 3%",
     weights: { curtailmentScore: 0.30, interconnectionScore: 0.22, locationScore: 0.18, developmentRiskScore: 0.12, priceScore: 0.08, demandProximityScore: 0.07, financialScore: 0.03 },
   },
   {
@@ -104,7 +104,7 @@ const DIMS = [
     label: "Capacity",
     shortLabel: "MW",
     color: "#3b82f6",
-    tooltip: "Log-scaled plant size score. Larger plants are more attractive for Walmart's ~500 MW procurement need. 2,000 MW → 93; 500 MW → 76; 100 MW → 58; 10 MW → 36.",
+    tooltip: "Log-scaled plant size score. Larger plants are more attractive for large procurement programs. 2,000 MW → 93; 500 MW → 76; 100 MW → 58; 10 MW → 36.",
   },
   {
     key: "financialScore" as const,

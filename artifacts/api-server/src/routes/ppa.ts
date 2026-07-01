@@ -43,8 +43,8 @@ function npv(cashflows: number[], wacc: number): number {
 /**
  * GET /api/ppa-npv
  *
- * Compute VPPA (Financial PPA) NPV from Walmart's perspective.
- * Walmart enters a Contract for Differences: they receive (market_price - strike) × volume.
+ * Compute VPPA (Financial PPA) NPV from the offtaker's perspective.
+ * Contract for Differences: offtaker receives (market_price - strike) × volume.
  *   Positive = hedge gain (market > strike)
  *   Negative = hedge cost (market < strike)
  *
@@ -52,7 +52,7 @@ function npv(cashflows: number[], wacc: number): number {
  *   candidateId  - integer (required)
  *   strike       - $/MWh offtake/settlement price (required)
  *   term         - contract length in years (default 15)
- *   wacc         - Walmart WACC for discounting (default 0.08)
+ *   wacc         - offtaker WACC for discounting (default 0.08)
  *   volume       - override contracted MWh/yr (default = capacity × CF × 8760)
  *   escalation   - annual market price escalation rate (default 0.015 = 1.5%/yr)
  */

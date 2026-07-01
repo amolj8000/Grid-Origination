@@ -103,7 +103,7 @@ router.post("/chat", async (req, res) => {
         `  ${r.node.padEnd(16)}${r.node_type ? r.node_type.padEnd(12) : ""}DA=$${String(r.avg_da).padStart(6)}  ${r.avg_rt !== undefined ? `RT=$${String(r.avg_rt).padStart(6)}  ` : ""}vol=${String(r.avg_vol).padStart(6)}  neg%=${String(r.neg_pct).padStart(5)}%  (${r.months}mo)`
       ).join("\n");
 
-    const systemPrompt = `You are the Grid Origination Copilot — an expert AI assistant for power market siting, PPA origination, and energy procurement across ERCOT, CAISO, and PJM. You are advising Walmart's energy procurement team.
+    const systemPrompt = `You are the Grid Origination Copilot — an expert AI assistant for power market siting, PPA origination, and energy procurement across ERCOT, CAISO, and PJM.
 
 You have a live PostgreSQL database with real market data. Use the run_sql tool when you need specific data not already shown below. Always be quantitative and cite data sources.
 
