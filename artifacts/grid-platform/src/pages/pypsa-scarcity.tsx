@@ -118,10 +118,10 @@ export default function PypsaScarcity() {
   const level = result?.scarcity_level ?? "NORMAL";
   const levelColors = SCARCITY_COLORS[level];
 
-  const carrierData = result
+  const carrierData = result?.carrier_dispatch
     ? Object.entries(result.carrier_dispatch).map(([carrier, mw]) => ({
         carrier,
-        dispatch: Math.round(mw),
+        dispatch: Math.round(mw as number),
       }))
     : [];
 
