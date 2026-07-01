@@ -6,29 +6,53 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, Minus, DollarSign, AlertCircle, Loader2,
-  ChevronDown, ChevronUp, Info,
+  ChevronDown, ChevronUp, Leaf, Zap, Shield,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PriceWaterfall {
-  marketRefDa:     number;
-  captureRatio:    number;
-  rawCapturePrice: number;
-  shapeDiscount:   number;
-  afterShapePrice: number;
-  basisAdjMwh:     number;
-  effectiveCapture: number;
+  marketRefDa:       number;
+  captureRatio:      number;
+  rawCapturePrice:   number;
+  shapeDiscount:     number;
+  afterShapePrice:   number;
+  basisAdjMwh:       number;
+  powerCapturePrice: number;
+  recRevenueMwh:     number;
+  totalRevenueMwh:   number;
+}
+
+interface VolumeWaterfall {
+  grossMwhYr:            number;
+  curtailmentHaircut:    number;
+  curtailmentLossMwhYr:  number;
+  afterCurtailmentMwh:   number;
+  availabilityFactor:    number;
+  availabilityLossMwhYr: number;
+  deliveredMwhYr:        number;
 }
 
 interface RiskFactors {
+  // Slider inputs
   locationScore:       number;
   curtailmentScore:    number;
   gridStabilityScore:  number;
+  interconnectionScore: number;
+  developmentRiskScore: number;
+  environmentalScore:  number;
+  // Context only
+  financialScore:      number;
+  demandProximityScore: number;
+  regulatoryScore:     number;
+  // Applied values
   basisAdjMwh:         number;
   curtailmentHaircut:  number;
   shapeDiscount:       number;
-  curtailmentLossMwhYr: number;
+  availabilityFactor:  number;
+  recRevenueMwh:       number;
+  p10Multiplier:       number;
+  p90Multiplier:       number;
 }
 
 interface ScenarioResult {
@@ -39,19 +63,20 @@ interface ScenarioResult {
 }
 
 interface PpaNpvResult {
-  candidateId:      number;
-  candidateName:    string;
-  assetType:        string;
-  market:           string;
-  capacityMw:       number;
-  contractedMwhYr:  number;
-  grossMwhYr:       number;
-  inputs:           { strike: number; term: number; wacc: number; escalation: number };
-  priceWaterfall:   PriceWaterfall;
-  riskFactors:      RiskFactors;
+  candidateId:       number;
+  candidateName:     string;
+  assetType:         string;
+  market:            string;
+  capacityMw:        number;
+  grossMwhYr:        number;
+  contractedMwhYr:   number;
+  inputs:            { strike: number; term: number; wacc: number; escalation: number };
+  priceWaterfall:    PriceWaterfall;
+  volumeWaterfall:   VolumeWaterfall;
+  riskFactors:       RiskFactors;
   baseCapturePriceMwh: number;
-  scenarios:        { p10: ScenarioResult; p50: ScenarioResult; p90: ScenarioResult };
-  breakevenPriceMwh:   number;
+  scenarios:         { p10: ScenarioResult; p50: ScenarioResult; p90: ScenarioResult };
+  breakevenPriceMwh: number;
   annualCashflowsP50M: { year: number; cashflowM: number; marketPriceMwh: number }[];
 }
 
@@ -61,25 +86,42 @@ const BASE_PATH = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const ISO_OPTIONS = ["ERCOT", "CAISO", "PJM"] as const;
 const TECH_LABELS: Record<string, string> = {
   solar: "Solar", wind: "Wind", storage: "Battery Storage",
-  gas: "Natural Gas", nuclear: "Nuclear", hydro: "Hydro",
+  natural_gas: "Natural Gas", nuclear: "Nuclear", hydro: "Hydro",
   coal: "Coal", geothermal: "Geothermal", other: "Other",
 };
+const REC_BASE: Record<string, number> = { ERCOT: 2.0, CAISO: 7.0, PJM: 5.5 };
+
 function techLabel(t: string) {
   return TECH_LABELS[t] ?? t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-// Mirror backend scoreToRiskDefaults() so sliders init correctly without an extra round-trip
-function scoreToRiskDefaults(locationScore: number, curtailmentScore: number, gridStabilityScore: number) {
-  const basisAdjMwh = locationScore >= 50
-    ? ((locationScore - 50) / 50) * 6
-    : ((locationScore - 50) / 50) * 12;
-  const curtailmentHaircut = Math.max(0, Math.min(0.25, (100 - curtailmentScore) / 100 * 0.22));
-  const shapeDiscount      = Math.max(0, Math.min(0.20, (100 - gridStabilityScore) / 100 * 0.15));
+// Mirror backend scoreToRiskDefaults() — avoids an extra round-trip when project changes
+function scoreToRiskDefaults(s: {
+  locationScore: number; curtailmentScore: number; gridStabilityScore: number;
+  interconnectionScore: number; developmentRiskScore: number; environmentalScore: number;
+  financialScore: number; market: string;
+}) {
+  const basisAdjMwh = s.locationScore >= 50
+    ? ((s.locationScore - 50) / 50) * 6
+    : ((s.locationScore - 50) / 50) * 12;
+  const curtailmentHaircut  = Math.max(0, Math.min(0.25, (100 - s.curtailmentScore)  / 100 * 0.22));
+  const shapeDiscount       = Math.max(0, Math.min(0.20, (100 - s.gridStabilityScore) / 100 * 0.15));
+  const avgReliability      = (s.interconnectionScore + s.developmentRiskScore) / 2;
+  const availabilityFactor  = 0.93 + (avgReliability / 100) * 0.06;
+  const recRevenueMwh       = (REC_BASE[s.market] ?? 4) * (s.environmentalScore / 100);
   return {
-    basisAdjMwh:       Math.round(basisAdjMwh * 100) / 100,
+    basisAdjMwh:        Math.round(basisAdjMwh * 100) / 100,
     curtailmentHaircut: Math.round(curtailmentHaircut * 1000) / 1000,
     shapeDiscount:      Math.round(shapeDiscount * 1000) / 1000,
+    availabilityFactor: Math.round(availabilityFactor * 1000) / 1000,
+    recRevenueMwh:      Math.round(recRevenueMwh * 100) / 100,
   };
+}
+
+function regulatoryLabel(score: number) {
+  if (score >= 65) return { text: "ITC 30% eligible", color: "text-teal-400 bg-teal-900/30 border-teal-700" };
+  if (score >= 40) return { text: "PTC eligible", color: "text-amber-400 bg-amber-900/30 border-amber-700" };
+  return { text: "Limited tax credits", color: "text-slate-400 bg-slate-800 border-slate-600" };
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -111,24 +153,35 @@ function NpvCard({ scenario, k }: { scenario: ScenarioResult; k: "p10" | "p50" |
   );
 }
 
-function ScoreBadge({ score }: { score: number }) {
+function ScoreBadge({ score, size = "sm" }: { score: number; size?: "xs" | "sm" }) {
   const color = score >= 70 ? "text-teal-400" : score >= 45 ? "text-amber-400" : "text-red-400";
-  return <span className={`text-xs font-semibold ${color}`}>{score.toFixed(0)}/100</span>;
+  return <span className={`font-semibold ${color} ${size === "xs" ? "text-[11px]" : "text-xs"}`}>{score.toFixed(0)}</span>;
 }
 
-function WaterfallRow({
-  label, value, note, highlight,
-}: { label: string; value: string; note?: string; highlight?: boolean }) {
+function WaterfallRow({ label, value, note, highlight, indent }: {
+  label: string; value: string; note?: string; highlight?: boolean; indent?: boolean;
+}) {
   return (
-    <div className={`flex items-center justify-between py-1.5 ${highlight ? "border-t border-slate-600 mt-1 pt-2" : ""}`}>
-      <div>
+    <div className={`flex items-center justify-between py-1.5 ${highlight ? "border-t border-slate-600 mt-1 pt-2.5" : ""}`}>
+      <div className={indent ? "pl-3" : ""}>
         <span className={`text-xs ${highlight ? "text-slate-200 font-semibold" : "text-slate-400"}`}>{label}</span>
-        {note && <span className="text-xs text-slate-600 ml-1.5">{note}</span>}
+        {note && <span className="text-[10px] text-slate-600 ml-1.5">{note}</span>}
       </div>
-      <span className={`text-xs font-mono ${highlight ? "text-teal-300 text-sm font-bold" : "text-slate-300"}`}>{value}</span>
+      <span className={`text-xs font-mono ${highlight ? "text-teal-300 font-bold" : "text-slate-300"}`}>{value}</span>
     </div>
   );
 }
+
+const ALL_SCORES: { key: keyof Candidate; label: string; desc: string }[] = [
+  { key: "curtailmentScore",    label: "Curtailment",   desc: "Volume haircut" },
+  { key: "locationScore",       label: "Basis",         desc: "Node-hub spread" },
+  { key: "gridStabilityScore",  label: "Shape",         desc: "Gen/load timing" },
+  { key: "interconnectionScore",label: "Congestion",    desc: "Transmission" },
+  { key: "developmentRiskScore",label: "Dev Risk",      desc: "Availability" },
+  { key: "environmentalScore",  label: "RECs",          desc: "REC revenue" },
+  { key: "financialScore",      label: "Mkt Rev",       desc: "Price certainty" },
+  { key: "regulatoryScore",     label: "Tax Credit",    desc: "ITC / PTC" },
+];
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -144,17 +197,19 @@ export default function PpaCalculator() {
   const [wacc,       setWacc]       = useState(8);
   const [escalation, setEscalation] = useState(1.5);
 
-  // Risk factor overrides (init from candidate scores on project select)
-  const [basisAdj,    setBasisAdj]    = useState(0);      // $/MWh
-  const [curtailment, setCurtailment] = useState(0.05);   // fraction 0–0.25
-  const [shapeDsc,    setShapeDsc]    = useState(0.05);   // fraction 0–0.20
+  // All 5 financial risk sliders
+  const [basisAdj,     setBasisAdj]     = useState(0);
+  const [curtailment,  setCurtailment]  = useState(0.05);
+  const [shapeDsc,     setShapeDsc]     = useState(0.05);
+  const [availability, setAvailability] = useState(0.96);
+  const [recRevenue,   setRecRevenue]   = useState(2.0);
   const [riskExpanded, setRiskExpanded] = useState(false);
 
   const [result,  setResult]  = useState<PpaNpvResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
-  // Load candidates by ISO
+  // Candidates
   const { data: candidatesData, isLoading: candidatesLoading } = useListCandidates(
     selectedIso ? { market: selectedIso as "ERCOT" | "CAISO" | "PJM", limit: 2000 } : { limit: 0 }
   );
@@ -173,20 +228,31 @@ export default function PpaCalculator() {
       .sort((a, b) => (b.capacityMw ?? 0) - (a.capacityMw ?? 0));
   }, [allForIso, selectedTech]);
 
-  // When project changes, init risk sliders from candidate scores
+  const selectedCandidate = useMemo(
+    () => projectOptions.find(c => c.id === candidateId) ?? null,
+    [projectOptions, candidateId]
+  );
+
+  // Auto-populate risk sliders from candidate scores
   useEffect(() => {
-    if (!candidateId) return;
-    const cand = projectOptions.find(c => c.id === candidateId);
-    if (!cand) return;
-    const defaults = scoreToRiskDefaults(
-      cand.locationScore    ?? 50,
-      cand.curtailmentScore ?? 50,
-      cand.gridStabilityScore ?? 50,
-    );
-    setBasisAdj(defaults.basisAdjMwh);
-    setCurtailment(defaults.curtailmentHaircut);
-    setShapeDsc(defaults.shapeDiscount);
+    if (!candidateId || !selectedCandidate) return;
+    const d = scoreToRiskDefaults({
+      locationScore:       selectedCandidate.locationScore       ?? 50,
+      curtailmentScore:    selectedCandidate.curtailmentScore    ?? 50,
+      gridStabilityScore:  selectedCandidate.gridStabilityScore  ?? 50,
+      interconnectionScore: selectedCandidate.interconnectionScore ?? 50,
+      developmentRiskScore: selectedCandidate.developmentRiskScore ?? 50,
+      environmentalScore:  selectedCandidate.environmentalScore  ?? 50,
+      financialScore:      selectedCandidate.financialScore      ?? 50,
+      market:              selectedCandidate.market ?? selectedIso,
+    });
+    setBasisAdj(d.basisAdjMwh);
+    setCurtailment(d.curtailmentHaircut);
+    setShapeDsc(d.shapeDiscount);
+    setAvailability(d.availabilityFactor);
+    setRecRevenue(d.recRevenueMwh);
     setRiskExpanded(true);
+    setResult(null);
   }, [candidateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleIsoChange(iso: string) {
@@ -199,24 +265,21 @@ export default function PpaCalculator() {
     setCandidateId(id); setResult(null);
   }
 
-  const selectedCandidate = useMemo(
-    () => projectOptions.find(c => c.id === candidateId) ?? null,
-    [projectOptions, candidateId]
-  );
-
   const compute = useCallback(async () => {
     if (!candidateId) return;
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams({
-        candidateId:        String(candidateId),
-        strike:             String(strike),
-        term:               String(term),
-        wacc:               String(wacc / 100),
-        escalation:         String(escalation / 100),
-        basisAdjMwh:        String(basisAdj),
-        curtailmentHaircut: String(curtailment),
-        shapeDiscount:      String(shapeDsc),
+        candidateId:         String(candidateId),
+        strike:              String(strike),
+        term:                String(term),
+        wacc:                String(wacc / 100),
+        escalation:          String(escalation / 100),
+        basisAdjMwh:         String(basisAdj),
+        curtailmentHaircut:  String(curtailment),
+        shapeDiscount:       String(shapeDsc),
+        availabilityFactor:  String(availability),
+        recRevenueMwh:       String(recRevenue),
       });
       const res = await fetch(`${BASE_PATH}/api/ppa-npv?${params}`);
       if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -226,21 +289,18 @@ export default function PpaCalculator() {
     } finally {
       setLoading(false);
     }
-  }, [candidateId, strike, term, wacc, escalation, basisAdj, curtailment, shapeDsc]);
+  }, [candidateId, strike, term, wacc, escalation, basisAdj, curtailment, shapeDsc, availability, recRevenue]);
 
   const selectCls = "w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-40 disabled:cursor-not-allowed";
-
-  const chartData = result?.annualCashflowsP50M.map(r => ({
-    year: `Y${r.year}`, cashflow: r.cashflowM, price: r.marketPriceMwh,
-  })) ?? [];
+  const chartData = result?.annualCashflowsP50M.map(r => ({ year: `Y${r.year}`, cashflow: r.cashflowM })) ?? [];
 
   return (
     <div className="p-6 space-y-6 min-h-screen bg-slate-900 text-slate-100">
       <div>
         <h1 className="text-2xl font-bold text-white">NPV Calculator</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Model a VPPA — effective cashflows = (capture price − strike) × delivered volume, discounted at WACC.
-          Risk factors (basis, curtailment, shape) are derived from each project's scoring and editable for stress testing.
+          All 8 ranking dimensions feed the model — basis, curtailment, shape, availability, and REC revenue
+          are editable for stress testing; market price spread auto-derives from the financial quality score.
         </p>
       </div>
 
@@ -248,7 +308,7 @@ export default function PpaCalculator() {
         {/* ── Left panel ── */}
         <div className="lg:col-span-1 space-y-4 bg-slate-800 rounded-xl p-5 border border-slate-700">
 
-          {/* ── Step 1: ISO ── */}
+          {/* Step 1 — ISO */}
           <div>
             <label className="block text-xs text-slate-400 mb-1">
               <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-teal-700 text-teal-100 text-[10px] font-bold mr-1.5">1</span>
@@ -260,7 +320,7 @@ export default function PpaCalculator() {
             </select>
           </div>
 
-          {/* ── Step 2: Technology ── */}
+          {/* Step 2 — Technology */}
           <div>
             <label className="block text-xs text-slate-400 mb-1">
               <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-teal-700 text-teal-100 text-[10px] font-bold mr-1.5">2</span>
@@ -279,12 +339,12 @@ export default function PpaCalculator() {
             </select>
           </div>
 
-          {/* ── Step 3: Project ── */}
+          {/* Step 3 — Project */}
           <div>
             <label className="block text-xs text-slate-400 mb-1">
               <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-teal-700 text-teal-100 text-[10px] font-bold mr-1.5">3</span>
               Project
-              {selectedTech && <span className="ml-1.5 text-slate-500">({projectOptions.length} available, sorted by MW)</span>}
+              {selectedTech && <span className="ml-1.5 text-slate-500">({projectOptions.length} · sorted by MW)</span>}
             </label>
             <select className={selectCls} value={candidateId ?? ""}
               disabled={!selectedTech}
@@ -296,7 +356,7 @@ export default function PpaCalculator() {
             </select>
           </div>
 
-          {/* ── Risk Factors (derived from project scores, editable) ── */}
+          {/* ── Risk Factors ── */}
           {candidateId && selectedCandidate && (
             <div className="rounded-lg border border-slate-600 bg-slate-900/50 overflow-hidden">
               <button
@@ -304,80 +364,102 @@ export default function PpaCalculator() {
                 onClick={() => setRiskExpanded(v => !v)}
               >
                 <span className="flex items-center gap-1.5">
-                  <Info className="h-3.5 w-3.5 text-amber-400" />
+                  <Shield className="h-3.5 w-3.5 text-amber-400" />
                   Risk Factors
-                  <span className="text-slate-500 font-normal">(from project scores)</span>
+                  <span className="text-slate-500 font-normal">· 5 sliders · auto-loaded from scores</span>
                 </span>
                 {riskExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
 
               {riskExpanded && (
-                <div className="px-4 pb-4 space-y-5 border-t border-slate-700">
-                  {/* Score badges */}
-                  <div className="grid grid-cols-3 gap-2 pt-3">
-                    {[
-                      { label: "Basis",     score: selectedCandidate.locationScore    ?? 50 },
-                      { label: "Curtailment", score: selectedCandidate.curtailmentScore ?? 50 },
-                      { label: "Shape",     score: selectedCandidate.gridStabilityScore ?? 50 },
-                    ].map(({ label, score }) => (
-                      <div key={label} className="text-center bg-slate-800 rounded-lg p-2">
-                        <p className="text-[10px] text-slate-500 mb-1">{label} score</p>
-                        <ScoreBadge score={score} />
-                      </div>
-                    ))}
+                <div className="px-4 pb-4 space-y-1 border-t border-slate-700">
+                  {/* All 8 score badges */}
+                  <div className="grid grid-cols-4 gap-1.5 pt-3 pb-3">
+                    {ALL_SCORES.map(({ key, label }) => {
+                      const score = (selectedCandidate[key] as number | null | undefined) ?? 50;
+                      return (
+                        <div key={key} className="text-center bg-slate-800 rounded-lg p-1.5">
+                          <p className="text-[9px] text-slate-500 leading-tight mb-0.5">{label}</p>
+                          <ScoreBadge score={score} size="xs" />
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {/* Basis adj slider */}
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Basis Adjustment:
-                      <span className={`font-semibold ml-1 ${basisAdj >= 0 ? "text-teal-400" : "text-red-400"}`}>
-                        {basisAdj >= 0 ? "+" : ""}{basisAdj.toFixed(2)} $/MWh
+                  <div className="border-t border-slate-700/60 pt-3 space-y-4">
+                    {/* Basis adj */}
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Basis Adj <span className={`font-semibold ml-1 ${basisAdj >= 0 ? "text-teal-400" : "text-red-400"}`}>
+                          {basisAdj >= 0 ? "+" : ""}{basisAdj.toFixed(2)} $/MWh
+                        </span>
+                        <span className="text-[10px] text-slate-600 ml-1">(from Basis score)</span>
+                      </label>
+                      <input type="range" min={-12} max={8} step={0.25} value={basisAdj}
+                        onChange={e => setBasisAdj(Number(e.target.value))}
+                        className="w-full accent-teal-500" />
+                      <div className="flex justify-between text-[10px] text-slate-600"><span>−$12 congested</span><span>+$8 clear</span></div>
+                    </div>
+
+                    {/* Curtailment */}
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Curtailment <span className="font-semibold text-amber-400 ml-1">{(curtailment * 100).toFixed(1)}%</span>
+                        <span className="text-[10px] text-slate-600 ml-1">(from Curtailment score)</span>
+                      </label>
+                      <input type="range" min={0} max={0.25} step={0.005} value={curtailment}
+                        onChange={e => setCurtailment(Number(e.target.value))}
+                        className="w-full accent-amber-500" />
+                      <div className="flex justify-between text-[10px] text-slate-600"><span>0%</span><span>25% of volume</span></div>
+                    </div>
+
+                    {/* Shape discount */}
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Shape Discount <span className="font-semibold text-purple-400 ml-1">{(shapeDsc * 100).toFixed(1)}%</span>
+                        <span className="text-[10px] text-slate-600 ml-1">(from Shape score)</span>
+                      </label>
+                      <input type="range" min={0} max={0.20} step={0.005} value={shapeDsc}
+                        onChange={e => setShapeDsc(Number(e.target.value))}
+                        className="w-full accent-purple-500" />
+                      <div className="flex justify-between text-[10px] text-slate-600"><span>0%</span><span>20% price discount</span></div>
+                    </div>
+
+                    {/* Availability */}
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Availability <span className="font-semibold text-blue-400 ml-1">{(availability * 100).toFixed(1)}%</span>
+                        <span className="text-[10px] text-slate-600 ml-1">(from Congestion + Dev Risk)</span>
+                      </label>
+                      <input type="range" min={0.80} max={0.99} step={0.005} value={availability}
+                        onChange={e => setAvailability(Number(e.target.value))}
+                        className="w-full accent-blue-500" />
+                      <div className="flex justify-between text-[10px] text-slate-600"><span>80% (unreliable)</span><span>99%</span></div>
+                    </div>
+
+                    {/* REC revenue */}
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1 flex items-center gap-1">
+                        <Leaf className="h-3 w-3 text-green-400" />
+                        REC Revenue <span className="font-semibold text-green-400 ml-1">${recRevenue.toFixed(2)}/MWh</span>
+                        <span className="text-[10px] text-slate-600 ml-1">(from RECs score)</span>
+                      </label>
+                      <input type="range" min={0} max={15} step={0.25} value={recRevenue}
+                        onChange={e => setRecRevenue(Number(e.target.value))}
+                        className="w-full accent-green-500" />
+                      <div className="flex justify-between text-[10px] text-slate-600"><span>$0</span><span>$15/MWh</span></div>
+                    </div>
+
+                    {/* Financial score → P10/P90 spread (auto, not a slider) */}
+                    <div className="rounded-lg bg-slate-800 px-3 py-2 flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <Zap className="h-3 w-3 text-slate-500" />
+                        P10/P90 spread (from Mkt Rev score {(selectedCandidate.financialScore ?? 50).toFixed(0)})
                       </span>
-                    </label>
-                    <input type="range" min={-12} max={8} step={0.25} value={basisAdj}
-                      onChange={e => setBasisAdj(Number(e.target.value))}
-                      className="w-full accent-teal-500" />
-                    <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-                      <span>−$12 (congested)</span><span>+$8 (clear)</span>
+                      <span className="text-[10px] text-slate-300 font-mono">
+                        ±{(15 + (1 - (selectedCandidate.financialScore ?? 50) / 100) * 10).toFixed(0)}%
+                      </span>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Node-hub DA price spread. Negative = delivery node trades below system average.
-                    </p>
-                  </div>
-
-                  {/* Curtailment slider */}
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Curtailment Haircut:
-                      <span className="font-semibold text-amber-400 ml-1">{(curtailment * 100).toFixed(1)}%</span>
-                    </label>
-                    <input type="range" min={0} max={0.25} step={0.005} value={curtailment}
-                      onChange={e => setCurtailment(Number(e.target.value))}
-                      className="w-full accent-amber-500" />
-                    <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-                      <span>0% (no curtailment)</span><span>25%</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Fraction of generation lost to economic or operational curtailment. Reduces delivered MWh.
-                    </p>
-                  </div>
-
-                  {/* Shape discount slider */}
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">
-                      Shape / Timing Discount:
-                      <span className="font-semibold text-purple-400 ml-1">{(shapeDsc * 100).toFixed(1)}%</span>
-                    </label>
-                    <input type="range" min={0} max={0.20} step={0.005} value={shapeDsc}
-                      onChange={e => setShapeDsc(Number(e.target.value))}
-                      className="w-full accent-purple-500" />
-                    <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-                      <span>0% (perfect shape)</span><span>20%</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Price discount from generating during low-price hours (e.g. solar midday duck curve).
-                    </p>
                   </div>
                 </div>
               )}
@@ -395,9 +477,7 @@ export default function PpaCalculator() {
               <input type="range" min={15} max={80} step={0.5} value={strike}
                 onChange={e => setStrike(Number(e.target.value))}
                 className="w-full accent-teal-500" />
-              <div className="flex justify-between text-xs text-slate-600 mt-0.5">
-                <span>$15</span><span>$80</span>
-              </div>
+              <div className="flex justify-between text-xs text-slate-600"><span>$15</span><span>$80</span></div>
             </div>
 
             <div>
@@ -407,9 +487,7 @@ export default function PpaCalculator() {
               <input type="range" min={5} max={25} step={1} value={term}
                 onChange={e => setTerm(Number(e.target.value))}
                 className="w-full accent-teal-500" />
-              <div className="flex justify-between text-xs text-slate-600 mt-0.5">
-                <span>5 yr</span><span>25 yr</span>
-              </div>
+              <div className="flex justify-between text-xs text-slate-600"><span>5 yr</span><span>25 yr</span></div>
             </div>
 
             <div>
@@ -419,21 +497,17 @@ export default function PpaCalculator() {
               <input type="range" min={4} max={15} step={0.5} value={wacc}
                 onChange={e => setWacc(Number(e.target.value))}
                 className="w-full accent-amber-500" />
-              <div className="flex justify-between text-xs text-slate-600 mt-0.5">
-                <span>4%</span><span>15%</span>
-              </div>
+              <div className="flex justify-between text-xs text-slate-600"><span>4%</span><span>15%</span></div>
             </div>
 
             <div>
               <label className="block text-xs text-slate-400 mb-1">
-                Power Price Escalation: <span className="text-purple-400 font-semibold">{escalation}%/yr</span>
+                Price Escalation: <span className="text-purple-400 font-semibold">{escalation}%/yr</span>
               </label>
               <input type="range" min={0} max={5} step={0.25} value={escalation}
                 onChange={e => setEscalation(Number(e.target.value))}
                 className="w-full accent-purple-500" />
-              <div className="flex justify-between text-xs text-slate-600 mt-0.5">
-                <span>0%</span><span>5%/yr</span>
-              </div>
+              <div className="flex justify-between text-xs text-slate-600"><span>0%</span><span>5%/yr</span></div>
             </div>
           </div>
 
@@ -457,8 +531,9 @@ export default function PpaCalculator() {
             <div className="flex flex-col items-center justify-center h-72 bg-slate-800/40 border border-slate-700 border-dashed rounded-xl text-slate-500">
               <DollarSign className="h-10 w-10 mb-3 opacity-30" />
               <p className="text-sm">Select a project and compute NPV</p>
-              <p className="text-xs mt-1 text-center max-w-sm">
-                Risk factors (basis, curtailment, shape) auto-populate from the project's scoring — adjust them to stress test assumptions
+              <p className="text-xs mt-2 text-center max-w-xs leading-relaxed">
+                All 8 ranking scores auto-populate as financial adjustments.<br />
+                Drag any slider to stress-test assumptions before computing.
               </p>
             </div>
           )}
@@ -467,94 +542,101 @@ export default function PpaCalculator() {
             <>
               {/* ── Project header ── */}
               <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-200">{result.candidateName}</p>
+                    <p className="text-xs text-slate-400">{result.market} · {techLabel(result.assetType)} · {result.capacityMw} MW</p>
+                  </div>
+                  {/* Tax credit context badge */}
+                  {result.riskFactors.regulatoryScore !== undefined && (() => {
+                    const rl = regulatoryLabel(result.riskFactors.regulatoryScore);
+                    return (
+                      <span className={`text-[10px] font-semibold px-2 py-1 rounded border ${rl.color}`}>
+                        {rl.text}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
                   {[
-                    { label: "Project",           value: result.candidateName },
-                    { label: "Market",            value: `${result.market} · ${techLabel(result.assetType)}` },
-                    { label: "Capacity",          value: `${result.capacityMw} MW` },
-                    { label: "Gross Generation",  value: `${(result.grossMwhYr / 1000).toFixed(0)} GWh/yr` },
-                    { label: "Delivered Volume",  value: `${(result.contractedMwhYr / 1000).toFixed(0)} GWh/yr` },
-                    { label: "Strike Price",      value: `$${result.inputs.strike}/MWh` },
-                    { label: "Effective Capture", value: `$${result.baseCapturePriceMwh}/MWh` },
-                    { label: "Breakeven Price",   value: `$${result.breakevenPriceMwh}/MWh` },
+                    { label: "Gross Gen",    value: `${(result.grossMwhYr / 1000).toFixed(0)} GWh/yr` },
+                    { label: "Delivered",    value: `${(result.contractedMwhYr / 1000).toFixed(0)} GWh/yr` },
+                    { label: "Strike",       value: `$${result.inputs.strike}/MWh` },
+                    { label: "Total Revenue",value: `$${result.baseCapturePriceMwh}/MWh` },
+                    { label: "Breakeven",    value: `$${result.breakevenPriceMwh}/MWh` },
+                    { label: "Term / WACC",  value: `${result.inputs.term} yr / ${(result.inputs.wacc * 100).toFixed(1)}%` },
                   ].map(({ label, value }) => (
                     <div key={label}>
-                      <p className="text-xs text-slate-500">{label}</p>
-                      <p className="text-sm font-medium text-slate-200 truncate">{value}</p>
+                      <p className="text-[10px] text-slate-500">{label}</p>
+                      <p className="text-xs font-medium text-slate-200">{value}</p>
                     </div>
                   ))}
                 </div>
                 {result.baseCapturePriceMwh < result.inputs.strike && (
                   <div className="mt-3 text-xs text-amber-400 bg-amber-900/20 border border-amber-800/40 rounded px-3 py-2">
-                    ⚠ Effective capture price (${result.baseCapturePriceMwh}) is below strike (${result.inputs.strike}/MWh) — offtaker carries net hedge cost at P50
+                    ⚠ Total revenue (${result.baseCapturePriceMwh}/MWh incl. RECs) is below strike — offtaker carries net hedge cost at P50
                   </div>
                 )}
               </div>
 
-              {/* ── Price waterfall + Risk factor summary ── */}
+              {/* ── Price waterfall + Volume waterfall ── */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Price waterfall */}
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                    Capture Price Build-Up
-                  </h3>
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Revenue Build-Up ($/MWh)</h3>
+                  <WaterfallRow label="Market DA Reference" value={`$${result.priceWaterfall.marketRefDa}`} note="2024 avg" />
+                  <WaterfallRow label={`× Capture Ratio (${(result.priceWaterfall.captureRatio * 100).toFixed(1)}%)`}
+                    value={`$${result.priceWaterfall.rawCapturePrice.toFixed(2)}`} note="tech × market" indent />
+                  <WaterfallRow label={`− Shape Discount (${(result.priceWaterfall.shapeDiscount * 100).toFixed(1)}%)`}
+                    value={`$${result.priceWaterfall.afterShapePrice.toFixed(2)}`} note="timing mismatch" indent />
+                  <WaterfallRow label={`± Basis Adj (${result.priceWaterfall.basisAdjMwh >= 0 ? "+" : ""}${result.priceWaterfall.basisAdjMwh.toFixed(2)})`}
+                    value={`$${result.priceWaterfall.powerCapturePrice.toFixed(2)}`} note="node-hub spread" indent />
+                  <WaterfallRow label={`+ REC Revenue ($${result.priceWaterfall.recRevenueMwh.toFixed(2)}/MWh)`}
+                    value={`$${result.priceWaterfall.totalRevenueMwh.toFixed(2)}`} note="bundled RECs" indent />
+                  <WaterfallRow label="vs Strike" value={`$${result.inputs.strike}/MWh`} highlight />
                   <WaterfallRow
-                    label="Market DA Reference"
-                    value={`$${result.priceWaterfall.marketRefDa}/MWh`}
-                    note="(2024 avg)"
-                  />
-                  <WaterfallRow
-                    label={`× Capture Ratio (${(result.priceWaterfall.captureRatio * 100).toFixed(1)}%)`}
-                    value={`$${result.priceWaterfall.rawCapturePrice.toFixed(2)}/MWh`}
-                    note="tech × market"
-                  />
-                  <WaterfallRow
-                    label={`− Shape Discount (${(result.priceWaterfall.shapeDiscount * 100).toFixed(1)}%)`}
-                    value={`$${result.priceWaterfall.afterShapePrice.toFixed(2)}/MWh`}
-                    note="gen/load timing"
-                  />
-                  <WaterfallRow
-                    label={`± Basis Adj (${result.priceWaterfall.basisAdjMwh >= 0 ? "+" : ""}${result.priceWaterfall.basisAdjMwh.toFixed(2)} $/MWh)`}
-                    value={`$${result.priceWaterfall.effectiveCapture.toFixed(2)}/MWh`}
-                    note="node-hub spread"
+                    label="Net $/MWh at P50"
+                    value={`${(result.priceWaterfall.totalRevenueMwh - result.inputs.strike) >= 0 ? "+" : ""}$${(result.priceWaterfall.totalRevenueMwh - result.inputs.strike).toFixed(2)}`}
                     highlight
                   />
                 </div>
 
-                {/* Volume + risk summary */}
+                {/* Volume waterfall */}
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                    Volume & Risk Summary
-                  </h3>
-                  <WaterfallRow
-                    label="Gross Generation"
-                    value={`${(result.grossMwhYr / 1000).toFixed(1)} GWh/yr`}
-                  />
-                  <WaterfallRow
-                    label={`− Curtailment (${(result.riskFactors.curtailmentHaircut * 100).toFixed(1)}%)`}
-                    value={`−${(result.riskFactors.curtailmentLossMwhYr / 1000).toFixed(1)} GWh/yr`}
-                  />
-                  <WaterfallRow
-                    label="Delivered Volume"
-                    value={`${(result.contractedMwhYr / 1000).toFixed(1)} GWh/yr`}
-                    highlight
-                  />
-                  <div className="mt-3 pt-3 border-t border-slate-700 grid grid-cols-3 gap-2">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Volume Waterfall (GWh/yr)</h3>
+                  <WaterfallRow label="Nameplate Generation"
+                    value={`${(result.volumeWaterfall.grossMwhYr / 1000).toFixed(1)} GWh`} />
+                  <WaterfallRow label={`− Curtailment (${(result.volumeWaterfall.curtailmentHaircut * 100).toFixed(1)}%)`}
+                    value={`−${(result.volumeWaterfall.curtailmentLossMwhYr / 1000).toFixed(1)} GWh`} indent />
+                  <WaterfallRow label="After curtailment"
+                    value={`${(result.volumeWaterfall.afterCurtailmentMwh / 1000).toFixed(1)} GWh`} indent />
+                  <WaterfallRow label={`× Availability (${(result.volumeWaterfall.availabilityFactor * 100).toFixed(1)}%)`}
+                    value={`−${(result.volumeWaterfall.availabilityLossMwhYr / 1000).toFixed(1)} GWh`} indent />
+                  <WaterfallRow label="Delivered Volume"
+                    value={`${(result.volumeWaterfall.deliveredMwhYr / 1000).toFixed(1)} GWh`} highlight />
+
+                  {/* Mini score reference */}
+                  <div className="mt-3 pt-3 border-t border-slate-700 grid grid-cols-4 gap-1.5">
                     {[
-                      { label: "Basis score",    score: result.riskFactors.locationScore },
-                      { label: "Curtail score",  score: result.riskFactors.curtailmentScore },
-                      { label: "Shape score",    score: result.riskFactors.gridStabilityScore },
+                      { label: "Basis",        score: result.riskFactors.locationScore },
+                      { label: "Curtailment",  score: result.riskFactors.curtailmentScore },
+                      { label: "Shape",        score: result.riskFactors.gridStabilityScore },
+                      { label: "Congestion",   score: result.riskFactors.interconnectionScore },
+                      { label: "Dev Risk",     score: result.riskFactors.developmentRiskScore },
+                      { label: "RECs",         score: result.riskFactors.environmentalScore },
+                      { label: "Mkt Rev",      score: result.riskFactors.financialScore },
+                      { label: "Tax Credit",   score: result.riskFactors.regulatoryScore },
                     ].map(({ label, score }) => (
-                      <div key={label} className="text-center bg-slate-900/50 rounded-lg p-2">
-                        <p className="text-[10px] text-slate-500 mb-1">{label}</p>
-                        <ScoreBadge score={score} />
+                      <div key={label} className="text-center bg-slate-900/60 rounded py-1.5 px-1">
+                        <p className="text-[9px] text-slate-500 leading-tight">{label}</p>
+                        <ScoreBadge score={score} size="xs" />
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              {/* ── Scenario NPV cards ── */}
+              {/* ── P10/P50/P90 scenario cards ── */}
               <div className="grid grid-cols-3 gap-3">
                 <NpvCard scenario={result.scenarios.p10} k="p10" />
                 <NpvCard scenario={result.scenarios.p50} k="p50" />
@@ -564,7 +646,7 @@ export default function PpaCalculator() {
               {/* ── Annual cashflow chart ── */}
               <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
                 <h3 className="text-sm font-semibold text-slate-300 mb-4">
-                  P50 Annual Cashflows — (Effective Capture − Strike) × Delivered Volume
+                  P50 Annual Cashflows — (Revenue − Strike) × Delivered Volume
                 </h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
@@ -577,14 +659,11 @@ export default function PpaCalculator() {
                       formatter={(v: number) => [`$${v.toFixed(1)}M`, "Cash Flow"]}
                     />
                     <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 2" />
-                    <Bar dataKey="cashflow" radius={[3, 3, 0, 0]}
-                      fill="#14b8a6"
-                      label={false}
-                    />
+                    <Bar dataKey="cashflow" radius={[3, 3, 0, 0]} fill="#14b8a6" />
                   </BarChart>
                 </ResponsiveContainer>
                 <p className="text-xs text-slate-500 mt-2 text-center">
-                  Positive = hedge gain (capture &gt; strike) · Negative = hedge cost · Escalating at {result.inputs.escalation * 100}%/yr
+                  Revenue = power capture + REC · Positive = hedge gain · Negative = hedge cost · {result.inputs.escalation * 100}%/yr escalation
                 </p>
               </div>
             </>
