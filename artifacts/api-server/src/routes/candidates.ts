@@ -107,7 +107,7 @@ router.get("/candidates", async (req, res) => {
 
     const result = rows.map(r => {
       const capacityMw = Number(r.capacityMw);
-      const rec = computeRec(r.assetType, r.market, capacityMw);
+      const rec = computeRec(r.assetType, r.market, capacityMw, r.state ?? undefined);
       const fin = computeFinancials(r.assetType, capacityMw, r.market);
       return {
         ...r,
@@ -189,7 +189,7 @@ router.get("/candidates/:id", async (req, res) => {
       return;
     }
     const fin = computeFinancials(row.assetType, Number(row.capacityMw), row.market);
-    const rec = computeRec(row.assetType, row.market, Number(row.capacityMw));
+    const rec = computeRec(row.assetType, row.market, Number(row.capacityMw), row.state ?? undefined);
     res.json({ ...row, capacityMw: Number(row.capacityMw), overallScore: Number(row.overallScore), latitude: Number(row.latitude), longitude: Number(row.longitude), ...rec, ...fin });
   } catch (err) {
     req.log.error({ err }, "getCandidate error");
