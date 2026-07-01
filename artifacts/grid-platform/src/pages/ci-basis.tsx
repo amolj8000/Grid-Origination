@@ -51,9 +51,11 @@ export default function CIBasis() {
     const aMap = new Map((data.seriesA ?? []).map(r => [`${r.year}-${r.month}`, r.basis]));
     const bMap = new Map((data.seriesB ?? []).map(r => [`${r.year}-${r.month}`, r.basis]));
     const keys = new Set([...aMap.keys(), ...bMap.keys()]);
+    const QUARTER_MONTHS: Record<number, string> = { 1:"Q1", 4:"Q2", 7:"Q3", 10:"Q4" };
     return [...keys].sort().map(k => {
       const [yr, mo] = k.split("-").map(Number);
-      return { label:`${yr}-${MONTHS[mo]}`, basisA: aMap.get(k) ?? null, basisB: bMap.get(k) ?? null };
+      const qLabel = QUARTER_MONTHS[mo] ? `${QUARTER_MONTHS[mo]} ${yr}` : "";
+      return { label: qLabel, basisA: aMap.get(k) ?? null, basisB: bMap.get(k) ?? null };
     });
   }, [data]);
 
@@ -189,7 +191,7 @@ export default function CIBasis() {
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={chartData} margin={{ top:0, right:8, left:0, bottom:0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e2d3e" vertical={false} />
-                  <XAxis dataKey="label" stroke="#64748b" tick={{ fill:"#64748b", fontSize:9 }} interval={3} />
+                  <XAxis dataKey="label" stroke="#64748b" tick={{ fill:"#64748b", fontSize:10 }} interval={0} />
                   <YAxis stroke="#64748b" tick={{ fill:"#64748b", fontSize:10 }} width={42} tickFormatter={v=>`$${v}`} />
                   <ReferenceLine y={0}   stroke="#64748b" strokeDasharray="4 4" />
                   <ReferenceLine y={10}  stroke="#f59e0b" strokeDasharray="3 3" strokeOpacity={0.6} />
