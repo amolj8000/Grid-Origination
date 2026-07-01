@@ -765,6 +765,76 @@ router.get("/temperature", async (req, res) => {
   }
 });
 
+// GET /api/temperature/forecast?iso=ERCOT&year=2026&month=7
+// Returns daily mean/min/max forecast for all zones in the given ISO + month
+router.get("/temperature/forecast", async (req, res) => {
+  try {
+    const iso   = String(req.query.iso   || "ERCOT").toUpperCase();
+    const year  = Number(req.query.year  || 2026);
+    const month = Number(req.query.month || 7);
+    if (!["ERCOT", "CAISO"].includes(iso)) {
+      res.status(400).json({ error: "bad_request", message: "iso must be ERCOT or CAISO" });
+      return;
+    }
+    const rows = await db.execute<{
+      zone: string; day: number; temp_mean_f: number; temp_min_f: number; temp_max_f: number;
+    }>(sql`
+      SELECT zone, day, temp_mean_f, temp_min_f, temp_max_f
+      FROM   temperature_forecasts
+      WHERE  iso   = ${iso}
+        AND  year  = ${year}
+        AND  month = ${month}
+      ORDER  BY zone, day
+    `);
+    res.json(rows.rows.map(r => ({
+      zone:  r.zone,
+      day:   Number(r.day),
+      meanF: Number(r.temp_mean_f),
+      minF:  Number(r.temp_min_f),
+      maxF:  Number(r.temp_max_f),
+    })));
+  } catch (err) {
+    req.log.error({ err }, "temperature/forecast error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// GET /api/temperature/forecast/overview?iso=ERCOT
+// Monthly aggregated forecast (mean of daily means) for the full 3-year horizon
+router.get("/temperature/forecast/overview", async (req, res) => {
+  try {
+    const iso = String(req.query.iso || "ERCOT").toUpperCase();
+    if (!["ERCOT", "CAISO"].includes(iso)) {
+      res.status(400).json({ error: "bad_request", message: "iso must be ERCOT or CAISO" });
+      return;
+    }
+    const rows = await db.execute<{
+      zone: string; year: number; month: number;
+      avg_mean_f: number; avg_min_f: number; avg_max_f: number;
+    }>(sql`
+      SELECT zone, year, month,
+             ROUND(AVG(temp_mean_f)::numeric, 1) AS avg_mean_f,
+             ROUND(AVG(temp_min_f)::numeric,  1) AS avg_min_f,
+             ROUND(AVG(temp_max_f)::numeric,  1) AS avg_max_f
+      FROM   temperature_forecasts
+      WHERE  iso = ${iso}
+      GROUP  BY zone, year, month
+      ORDER  BY zone, year, month
+    `);
+    res.json(rows.rows.map(r => ({
+      zone:     r.zone,
+      year:     Number(r.year),
+      month:    Number(r.month),
+      avgMeanF: Number(r.avg_mean_f),
+      avgMinF:  Number(r.avg_min_f),
+      avgMaxF:  Number(r.avg_max_f),
+    })));
+  } catch (err) {
+    req.log.error({ err }, "temperature/forecast/overview error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 // GET /api/temperature/stats?iso=ERCOT
 // Monthly avg/min/max per zone across all available data
 router.get("/temperature/stats", async (req, res) => {

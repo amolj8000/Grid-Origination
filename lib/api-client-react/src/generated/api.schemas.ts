@@ -699,6 +699,23 @@ export interface TemperatureStat {
   count: number;
 }
 
+export interface TemperatureForecastDay {
+  zone: string;
+  day: number;
+  meanF: number;
+  minF: number;
+  maxF: number;
+}
+
+export interface TemperatureForecastMonth {
+  zone: string;
+  year: number;
+  month: number;
+  avgMeanF: number;
+  avgMinF: number;
+  avgMaxF: number;
+}
+
 export type ListCandidatesParams = {
   market?: ListCandidatesMarket;
   assetType?: ListCandidatesAssetType;
@@ -911,5 +928,15 @@ export type GetTemperatureParams = {
 };
 
 export type GetTemperatureStatsParams = {
+  iso?: string;
+};
+
+export type GetTemperatureForecastParams = {
+  iso?: string;
+  year?: number;
+  month?: number;
+};
+
+export type GetTemperatureForecastOverviewParams = {
   iso?: string;
 };

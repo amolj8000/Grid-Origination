@@ -56,6 +56,8 @@ import type {
   GetErcotBusLoadParams,
   GetErcotBusShiftFactorsParams,
   GetErcotZoneLoadHourlyParams,
+  GetTemperatureForecastOverviewParams,
+  GetTemperatureForecastParams,
   GetTemperatureParams,
   GetTemperatureStatsParams,
   GetTopCandidatesParams,
@@ -74,6 +76,8 @@ import type {
   QueueSummary,
   Screening,
   ScreeningInput,
+  TemperatureForecastDay,
+  TemperatureForecastMonth,
   TemperatureStat,
 } from "./api.schemas";
 
@@ -4072,6 +4076,218 @@ export function useGetTemperatureStats<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTemperatureStatsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Daily temperature forecast (mean/min/max) for a given ISO and calendar month
+ */
+export const getGetTemperatureForecastUrl = (
+  params?: GetTemperatureForecastParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/temperature/forecast?${stringifiedParams}`
+    : `/api/temperature/forecast`;
+};
+
+export const getTemperatureForecast = async (
+  params?: GetTemperatureForecastParams,
+  options?: RequestInit,
+): Promise<TemperatureForecastDay[]> => {
+  return customFetch<TemperatureForecastDay[]>(
+    getGetTemperatureForecastUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetTemperatureForecastQueryKey = (
+  params?: GetTemperatureForecastParams,
+) => {
+  return [`/api/temperature/forecast`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTemperatureForecastQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTemperatureForecast>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureForecastParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperatureForecast>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTemperatureForecastQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTemperatureForecast>>
+  > = ({ signal }) =>
+    getTemperatureForecast(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTemperatureForecast>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTemperatureForecastQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTemperatureForecast>>
+>;
+export type GetTemperatureForecastQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Daily temperature forecast (mean/min/max) for a given ISO and calendar month
+ */
+
+export function useGetTemperatureForecast<
+  TData = Awaited<ReturnType<typeof getTemperatureForecast>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureForecastParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperatureForecast>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTemperatureForecastQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Monthly aggregated temperature forecast for 3-year horizon
+ */
+export const getGetTemperatureForecastOverviewUrl = (
+  params?: GetTemperatureForecastOverviewParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/temperature/forecast/overview?${stringifiedParams}`
+    : `/api/temperature/forecast/overview`;
+};
+
+export const getTemperatureForecastOverview = async (
+  params?: GetTemperatureForecastOverviewParams,
+  options?: RequestInit,
+): Promise<TemperatureForecastMonth[]> => {
+  return customFetch<TemperatureForecastMonth[]>(
+    getGetTemperatureForecastOverviewUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetTemperatureForecastOverviewQueryKey = (
+  params?: GetTemperatureForecastOverviewParams,
+) => {
+  return [
+    `/api/temperature/forecast/overview`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetTemperatureForecastOverviewQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTemperatureForecastOverview>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureForecastOverviewParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperatureForecastOverview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTemperatureForecastOverviewQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTemperatureForecastOverview>>
+  > = ({ signal }) =>
+    getTemperatureForecastOverview(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTemperatureForecastOverview>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTemperatureForecastOverviewQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTemperatureForecastOverview>>
+>;
+export type GetTemperatureForecastOverviewQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Monthly aggregated temperature forecast for 3-year horizon
+ */
+
+export function useGetTemperatureForecastOverview<
+  TData = Awaited<ReturnType<typeof getTemperatureForecastOverview>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTemperatureForecastOverviewParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemperatureForecastOverview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTemperatureForecastOverviewQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

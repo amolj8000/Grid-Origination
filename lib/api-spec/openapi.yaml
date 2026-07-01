@@ -960,6 +960,42 @@ paths:
                 items:
                   $ref: "#/components/schemas/TemperatureStat"
 
+  /temperature/forecast:
+    get:
+      operationId: getTemperatureForecast
+      tags: [temperature]
+      summary: Daily temperature forecast (mean/min/max) for a given ISO and calendar month
+      parameters:
+        - { name: iso,   in: query, required: false, schema: { type: string } }
+        - { name: year,  in: query, required: false, schema: { type: integer } }
+        - { name: month, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Daily forecast rows (zone × day)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TemperatureForecastDay"
+
+  /temperature/forecast/overview:
+    get:
+      operationId: getTemperatureForecastOverview
+      tags: [temperature]
+      summary: Monthly aggregated temperature forecast for 3-year horizon
+      parameters:
+        - { name: iso, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Monthly forecast summary per zone
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TemperatureForecastMonth"
+
 components:
   schemas:
     HealthStatus:
@@ -1746,4 +1782,25 @@ components:
         maxF:  { type: number }
         count: { type: integer }
       required: [zone, year, month, avgF, minF, maxF, count]
+
+    TemperatureForecastDay:
+      type: object
+      properties:
+        zone:   { type: string }
+        day:    { type: integer }
+        meanF:  { type: number }
+        minF:   { type: number }
+        maxF:   { type: number }
+      required: [zone, day, meanF, minF, maxF]
+
+    TemperatureForecastMonth:
+      type: object
+      properties:
+        zone:       { type: string }
+        year:       { type: integer }
+        month:      { type: integer }
+        avgMeanF:   { type: number }
+        avgMinF:    { type: number }
+        avgMaxF:    { type: number }
+      required: [zone, year, month, avgMeanF, avgMinF, avgMaxF]
 

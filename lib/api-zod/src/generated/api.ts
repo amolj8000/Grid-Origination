@@ -1241,3 +1241,42 @@ export const GetTemperatureStatsResponseItem = zod.object({
 export const GetTemperatureStatsResponse = zod.array(
   GetTemperatureStatsResponseItem,
 );
+
+/**
+ * @summary Daily temperature forecast (mean/min/max) for a given ISO and calendar month
+ */
+export const GetTemperatureForecastQueryParams = zod.object({
+  iso: zod.coerce.string().optional(),
+  year: zod.coerce.number().optional(),
+  month: zod.coerce.number().optional(),
+});
+
+export const GetTemperatureForecastResponseItem = zod.object({
+  zone: zod.string(),
+  day: zod.number(),
+  meanF: zod.number(),
+  minF: zod.number(),
+  maxF: zod.number(),
+});
+export const GetTemperatureForecastResponse = zod.array(
+  GetTemperatureForecastResponseItem,
+);
+
+/**
+ * @summary Monthly aggregated temperature forecast for 3-year horizon
+ */
+export const GetTemperatureForecastOverviewQueryParams = zod.object({
+  iso: zod.coerce.string().optional(),
+});
+
+export const GetTemperatureForecastOverviewResponseItem = zod.object({
+  zone: zod.string(),
+  year: zod.number(),
+  month: zod.number(),
+  avgMeanF: zod.number(),
+  avgMinF: zod.number(),
+  avgMaxF: zod.number(),
+});
+export const GetTemperatureForecastOverviewResponse = zod.array(
+  GetTemperatureForecastOverviewResponseItem,
+);
