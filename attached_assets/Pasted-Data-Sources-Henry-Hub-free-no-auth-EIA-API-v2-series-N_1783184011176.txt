@@ -1,0 +1,101 @@
+Data Sources
+Henry Hub (free, no auth):
+
+EIA API v2: series NG.RNGWHHD.D (daily), NG.RNGWHHDM.M (monthly)
+FRED: series DHHNGSP (daily) — no API key needed, just a GET request
+URL: https://fred.stlouisfed.org/graph/fredgraph.csv?id=DHHNGSP
+
+Waha Hub (free options):
+
+EIA doesn't publish Waha daily directly, but FRED has WTXCRNGAS (West Texas spot)
+Better: AEGIS Hedging publishes Waha fundamentals regularly
+For the app: the cleanest free daily Waha series is through the EIA's Natural Gas weekly at eia.gov/naturalgas/weekly/ — scraped or via their OpenData API under regional spot prices
+EIA series ID for "West Texas (Waha)": NG.RNGWWWA.D in EIA API v1
+
+Critical context right now: Waha is deeply negative as of mid-2026. It's been below zero for 89+ consecutive trading sessions — the longest ever streak. Prompt month fixed price hit -$5.69/MMBtu, basis vs Henry Hub at -$8.25/MMBtu. Targa + Kinetik alone shut in 620 MMcf/d from the Permian because the gas literally has nowhere to go. This is an extraordinary market condition that directly shapes ERCOT West Texas power prices right now.
+
+All the Ways Gas Prices Benefit the Platform
+1. Spark Spread (the core use)
+Spark Spread = Power Price − (Gas Price × Heat Rate)
+For ERCOT:
+
+HB_HOUSTON spark spread = HB_HOUSTON DA − (Henry Hub × 8.5 MMBtu/MWh)
+LZ_WEST spark spread = LZ_WEST DA − (Waha × 8.5 MMBtu/MWh)
+
+When LZ_WEST DA is $22/MWh and Waha is -$5/MMBtu, the West Texas gas plant spark spread = $22 − (−$5 × 8.5) = $64.50/MWh. Gas plants near Waha are enormously profitable right now with essentially free fuel. This explains why gas isn't clearing the market even when wind is curtailed — it's competing at negative fuel cost.
+2. Implied Heat Rate (market-implied gas plant valuation)
+Implied Heat Rate = Power Price ÷ Gas Price
+This is the break-even heat rate — if a plant's actual heat rate is lower than this number, it's in-the-money. It's effectively the market's valuation of gas optionality. When implied HR spikes (like during Winter Storm Uri), it shows the grid is fully stressed. Plotting implied heat rate over time is a cleaner signal than power price alone because it strips out the gas price component.
+3. Waha-HH Basis as a Congestion Proxy
+The Waha discount to Henry Hub is driven by Permian gas pipeline takeaway capacity — exactly the same bottleneck that causes West Texas electricity congestion. The two basis spreads (gas basis and power basis) are structurally correlated:
+
+When Waha blows out negative → too much West Texas gas → gas plants run cheap → suppresses LZ_WEST power prices → worsens DA-RT spread for wind/solar
+This correlation means Waha-HH spread is actually a leading indicator of ERCOT West Texas power congestion
+
+Plotting Waha-HH basis alongside LZ_WEST DA-RT power basis on the same chart would be genuinely novel and analytically powerful for the platform.
+4. Merit Order / Price Floor Modeling
+Gas price sets the variable cost floor for ~70% of ERCOT's thermal fleet. At HH $3.50/MMBtu × 8.5 HR = $29.75/MWh breakeven. When hub prices drop below that, gas backs off and renewables dominate — but the constraint is transmission, not demand. This is the mechanism behind negative prices and curtailment. The platform can model: "at what gas price does curtailment start increasing?"
+5. Heat Rate Options / Gas Plant Optionality
+For trading: a gas peaker plant is essentially a call option on the spark spread. Its value = max(Power − Gas × HR, 0). When power spikes (ERCOT scarcity events), the plant captures enormous value. The app could calculate the implied value of ERCOT's peaker fleet as a function of current gas prices — showing when it's cheaper for Walmart to buy power vs hold a PPA.
+6. PPA Pricing Anchor
+Gas price is Walmart's outside option — if gas is cheap, wholesale power is cheap, and a PPA needs to be priced accordingly to be competitive. Plotting Henry Hub against ERCOT hub DA prices over time shows the long-run relationship: power tracks gas with a lag, and the gap widens when renewables displace gas. A buyer seeing widening PPA-vs-gas discount knows the PPA hedge is becoming more valuable.
+7. Negative Price Prediction Signal
+Negative Waha gas prices → gas generators bid near zero or negative (fuel credit) → prices spike negative when wind ramps → curtailment increases. Current Waha negativity at -$5.69 is directly causing West Texas negative power price frequency to remain high, which is exactly what your curtailment scores should be capturing.
+8. Portfolio Hedging / Options Pricing
+If you're going further into the trading angle: gas-power correlation (correlation between HH and HB_NORTH) can be calculated from the historical data. Low correlation months are when renewable displacing is happening; high correlation months are gas-dominated. This ratio matters for hedge effectiveness calculations in the Basis Analyzer.
+
+Dashboard / Tab Design
+Tab name: Gas & Power Fundamentals (or "Fuel Markets")
+Section 1 — Price History
+
+Dual-axis line chart: Henry Hub (left axis, $/MMBtu) vs ERCOT HB_HOUSTON (right axis, $/MWh) — Jan 2022 to present
+Second row: Waha daily with HH overlay + Waha-HH spread as a bar chart underneath
+Toggle: monthly averages vs daily
+
+Section 2 — Spark Spread Calculator
+
+Node selector (any ERCOT hub/zone)
+Heat rate slider: 6–14 MMBtu/MWh
+Gas source toggle: Henry Hub vs Waha
+Output: monthly spark spread time series + current spark spread callout
+Color-code: green when spread >$10 (profitable), red when <$0 (gas peaker underwater)
+
+Section 3 — Implied Heat Rate
+
+Line chart: Power Price ÷ Gas Price by hub, 2022–present
+Add horizontal reference lines: 7.0 (efficient CCGT), 9.0 (typical peaker), 12.0 (old steam)
+When the line is above 12 → scarcity conditions; below 7 → renewables dominating
+
+Section 4 — Waha Basis Analysis
+
+Waha-HH spread chart alongside LZ_WEST DA-RT power basis (same x-axis)
+Scatter: Waha spread (x) vs LZ_WEST neg-price % (y) — correlation should be visually obvious
+Current Waha context callout: "Waha currently -$5.69/MMBtu — 89th consecutive negative day"
+
+Section 5 — Market Context (static but high-value)
+
+Key heat rate benchmarks by technology (CCGT: 6.5–7.5, Gas CT: 9–11, Oil peaker: 13–15)
+Current spark spread by node at today's gas prices
+"Gas floor" price: minimum power price for thermal to be economic at current gas rates
+
+
+EIA API Implementation Notes
+The easiest path for the app is to call two free endpoints:
+# Henry Hub monthly (no auth)
+https://api.eia.gov/v2/natural-gas/pri/fut/data/?
+  frequency=monthly&data[0]=value&facets[series][]=RNGWHHDM&api_key=YOUR_KEY
+
+# Henry Hub daily via FRED (truly no auth needed)
+https://fred.stlouisfed.org/graph/fredgraph.csv?id=DHHNGSP
+
+# Waha monthly (EIA regional spot prices)
+https://api.eia.gov/v2/natural-gas/pri/sum/data/?
+  frequency=monthly&data[0]=value&facets[duoarea][]=Y35NY&api_key=YOUR_KEY
+EIA API keys are free and instant at eia.gov/opendata. FRED requires no key at all for CSV downloads. This keeps the implementation fully free and public — no subscription data needed.
+Sources:
+
+Henry Hub Monthly EIA
+FRED Henry Hub Daily (DHHNGSP)
+EIA Henry Hub 2026 Forecast
+AEGIS Waha Basis Analysis
+EIA Short-Term Energy Outlook — Natural Gas

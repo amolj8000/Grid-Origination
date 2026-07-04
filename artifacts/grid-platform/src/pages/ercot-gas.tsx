@@ -1,0 +1,824 @@
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import {
+  LineChart, Line, AreaChart, Area, BarChart, Bar, ComposedChart,
+  XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  Legend, ResponsiveContainer, ReferenceLine, Scatter, ScatterChart, Cell,
+} from "recharts";
+import { Loader2, TrendingUp, TrendingDown, Zap, Flame, AlertTriangle } from "lucide-react";
+
+// ── palette ───────────────────────────────────────────────────────────────
+const C = {
+  teal:   "#14b8a6", amber:  "#f59e0b", purple: "#8b5cf6",
+  red:    "#ef4444", green:  "#22c55e", blue:   "#3b82f6",
+  orange: "#f97316", pink:   "#ec4899",
+  tooltipBg: "#0f172a", tooltipBorder: "#1e293b", tooltipFg: "#f8fafc",
+};
+const TOOLTIP_STYLE = {
+  backgroundColor: C.tooltipBg, borderColor: C.tooltipBorder, color: C.tooltipFg,
+};
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtMonth = (y: number, m: number) => `${MONTHS[m-1]} '${String(y).slice(2)}`;
+
+const HUB_NODES = [
+  "HB_HOUSTON","HB_NORTH","HB_SOUTH","HB_WEST","HB_PAN",
+  "LZ_HOUSTON","LZ_NORTH","LZ_SOUTH","LZ_WEST","LZ_AEN","LZ_CPS","LZ_LCRA",
+];
+
+// ── API helpers ───────────────────────────────────────────────────────────
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+async function apiFetch<T>(path: string): Promise<T> {
+  const r = await fetch(`${BASE}${path}`);
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.json() as Promise<T>;
+}
+
+interface GasRow  { hub: string; date: string; price: number; source: string }
+interface SpreadRow {
+  year: number; month: number;
+  powerPrice: number; gasPrice: number | null; sparkSpread: number | null; heatRate: number;
+}
+interface HeatRateRow {
+  year: number; month: number;
+  powerPrice: number; gasPrice: number | null; impliedHeatRate: number | null;
+}
+interface BasisRow {
+  year: number; month: number;
+  hhAvg: number | null; wahaAvg: number | null; wahaBasis: number | null;
+  powerDaAvg: number | null; powerRtAvg: number | null;
+  powerBasis: number | null; negPricePct: number | null;
+}
+interface SummaryNode {
+  node: string; year: number; month: number;
+  powerPrice: number; gasPrice: number | null;
+  sparkSpread: number | null; impliedHR: number | null;
+}
+interface Summary {
+  latestGas: Record<string, { date: string; price: number }>;
+  nodes: SummaryNode[];
+  benchmarks: Record<string, { label: string; minHR: number; maxHR: number }>;
+}
+
+// ── Custom tooltip ────────────────────────────────────────────────────────
+function CustomTooltip({ active, payload, label, unit = "" }: {
+  active?: boolean; payload?: { name: string; value: number; color: string }[];
+  label?: string; unit?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded border p-2 text-xs" style={TOOLTIP_STYLE}>
+      <p className="font-semibold mb-1">{label}</p>
+      {payload.map((p, i) => (
+        <p key={i} style={{ color: p.color }}>
+          {p.name}: {p.value != null ? `${Number(p.value).toFixed(2)}${unit}` : "—"}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────
+export default function ErcotGasPage() {
+  // State
+  const [node,     setNode]     = useState("HB_HOUSTON");
+  const [heatRate, setHeatRate] = useState(8.5);
+  const [gasHub,   setGasHub]   = useState("henry_hub");
+
+  // Queries
+  const { data: gasPrices, isLoading: gasLoading } = useQuery<GasRow[]>({
+    queryKey: ["gas-prices"],
+    queryFn: () => apiFetch("/api/gas-prices"),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: sparkData, isLoading: sparkLoading } = useQuery<{ data: SpreadRow[] }>({
+    queryKey: ["spark-spread", node, heatRate, gasHub],
+    queryFn: () => apiFetch(`/api/gas-prices/spark-spread?node=${node}&heat_rate=${heatRate}&gas_hub=${gasHub}`),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: hrData, isLoading: hrLoading } = useQuery<{ data: HeatRateRow[] }>({
+    queryKey: ["implied-heat-rate", node, gasHub],
+    queryFn: () => apiFetch(`/api/gas-prices/implied-heat-rate?node=${node}&gas_hub=${gasHub}`),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: basisData, isLoading: basisLoading } = useQuery<{ data: BasisRow[] }>({
+    queryKey: ["waha-basis"],
+    queryFn: () => apiFetch("/api/gas-prices/waha-basis"),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: summary } = useQuery<Summary>({
+    queryKey: ["gas-summary"],
+    queryFn: () => apiFetch("/api/gas-prices/summary"),
+    staleTime: 5 * 60_000,
+  });
+
+  // ── Derived data ─────────────────────────────────────────────────────────
+  const priceHistory = useMemo(() => {
+    if (!gasPrices) return [];
+    const byDate: Record<string, { date: string; henry_hub?: number; waha?: number }> = {};
+    for (const r of gasPrices) {
+      if (!byDate[r.date]) byDate[r.date] = { date: r.date };
+      byDate[r.date][r.hub as "henry_hub" | "waha"] = Number(r.price);
+    }
+    return Object.values(byDate)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(r => ({
+        ...r,
+        wahaBasis: r.henry_hub != null && r.waha != null
+          ? +(r.waha - r.henry_hub).toFixed(3) : undefined,
+      }));
+  }, [gasPrices]);
+
+  // Monthly averages for price chart
+  const monthlyPrices = useMemo(() => {
+    if (!gasPrices) return [];
+    const map: Record<string, { label: string; henry_hub: number[]; waha: number[] }> = {};
+    for (const r of gasPrices) {
+      const d = new Date(r.date);
+      const y = d.getFullYear(), m = d.getMonth() + 1;
+      const k = `${y}-${String(m).padStart(2,"0")}`;
+      if (!map[k]) map[k] = { label: fmtMonth(y, m), henry_hub: [], waha: [] };
+      map[k][r.hub as "henry_hub" | "waha"].push(Number(r.price));
+    }
+    return Object.entries(map)
+      .sort(([a],[b]) => a.localeCompare(b))
+      .map(([,v]) => ({
+        label:      v.label,
+        henry_hub:  v.henry_hub.length ? +(v.henry_hub.reduce((a,b)=>a+b,0)/v.henry_hub.length).toFixed(3) : undefined,
+        waha:       v.waha.length      ? +(v.waha.reduce((a,b)=>a+b,0)/v.waha.length).toFixed(3)          : undefined,
+        wahaBasis:  (v.henry_hub.length && v.waha.length)
+          ? +((v.waha.reduce((a,b)=>a+b,0)/v.waha.length) - (v.henry_hub.reduce((a,b)=>a+b,0)/v.henry_hub.length)).toFixed(3)
+          : undefined,
+      }));
+  }, [gasPrices]);
+
+  const spreadRows = useMemo(() => (sparkData?.data ?? []).map(r => ({
+    ...r,
+    label: fmtMonth(r.year, r.month),
+    spreadColor: (r.sparkSpread ?? 0) > 10 ? C.green : (r.sparkSpread ?? 0) < 0 ? C.red : C.amber,
+  })), [sparkData]);
+
+  const hrRows = useMemo(() => (hrData?.data ?? []).map(r => ({
+    ...r, label: fmtMonth(r.year, r.month),
+  })), [hrData]);
+
+  const basisRows = useMemo(() => (basisData?.data ?? []).map(r => ({
+    ...r, label: fmtMonth(r.year, r.month),
+  })), [basisData]);
+
+  // Summary stats
+  const hhLatest  = summary?.latestGas?.henry_hub;
+  const wahaLatest= summary?.latestGas?.waha;
+  const wahaBasisLatest = (hhLatest && wahaLatest)
+    ? (wahaLatest.price - hhLatest.price).toFixed(2) : null;
+
+  const latestSpread = spreadRows.at(-1);
+
+  const noData = !gasLoading && (!gasPrices || gasPrices.length === 0);
+
+  return (
+    <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold text-foreground">ERCOT Gas & Power Fundamentals</h1>
+        <p className="text-muted-foreground text-sm">
+          Henry Hub + Waha daily prices, spark spreads, implied heat rates, and basis analysis.
+          Gas price drives ~70% of ERCOT's thermal dispatch and sets the power price floor.
+        </p>
+      </div>
+
+      {/* KPI bar */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="bg-card border-border">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Henry Hub (latest)</p>
+            <p className="text-2xl font-bold text-teal-400">
+              {hhLatest ? `$${hhLatest.price.toFixed(2)}` : "—"}
+              <span className="text-sm font-normal text-muted-foreground ml-1">/MMBtu</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{hhLatest?.date ?? "no data"}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Waha Hub (latest)</p>
+            <p className={`text-2xl font-bold ${wahaLatest && wahaLatest.price < 0 ? "text-red-400" : "text-amber-400"}`}>
+              {wahaLatest ? `$${wahaLatest.price.toFixed(2)}` : "—"}
+              <span className="text-sm font-normal text-muted-foreground ml-1">/MMBtu</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{wahaLatest?.date ?? "no data"}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Waha−HH Basis (latest)</p>
+            <p className={`text-2xl font-bold ${wahaBasisLatest && Number(wahaBasisLatest) < -2 ? "text-red-400" : "text-purple-400"}`}>
+              {wahaBasisLatest ? `$${wahaBasisLatest}` : "—"}
+              <span className="text-sm font-normal text-muted-foreground ml-1">/MMBtu</span>
+            </p>
+            {wahaBasisLatest && Number(wahaBasisLatest) < -3 && (
+              <p className="text-xs text-red-400 mt-0.5 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> Extreme negative basis
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">
+              {node} Spark Spread (latest mo.)
+            </p>
+            <p className={`text-2xl font-bold ${(latestSpread?.sparkSpread ?? 0) > 10 ? "text-green-400" : (latestSpread?.sparkSpread ?? 0) < 0 ? "text-red-400" : "text-amber-400"}`}>
+              {latestSpread?.sparkSpread != null ? `$${latestSpread.sparkSpread.toFixed(1)}` : "—"}
+              <span className="text-sm font-normal text-muted-foreground ml-1">/MWh</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">HR {heatRate} MMBtu/MWh</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* No data banner */}
+      {noData && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="pt-4 text-sm text-amber-400">
+            <strong>Gas price data not yet seeded.</strong> Run{" "}
+            <code className="font-mono bg-muted px-1 rounded">pnpm --filter @workspace/scripts run seed-gas-prices</code>{" "}
+            to fetch Henry Hub (FRED) and Waha (EIA) prices since Jan 2024.
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Main tabs */}
+      <Tabs defaultValue="prices" className="space-y-4">
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="prices">Price History</TabsTrigger>
+          <TabsTrigger value="spark">Spark Spread</TabsTrigger>
+          <TabsTrigger value="heatrate">Implied Heat Rate</TabsTrigger>
+          <TabsTrigger value="basis">Waha Basis</TabsTrigger>
+          <TabsTrigger value="context">Market Context</TabsTrigger>
+        </TabsList>
+
+        {/* ── Tab 1: Price History ───────────────────────────────────────── */}
+        <TabsContent value="prices" className="space-y-4">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Henry Hub vs Waha — Monthly Average ($/MMBtu)</CardTitle>
+              <CardDescription>
+                Left axis: gas prices. Both hubs from real market data (FRED DHHNGSP + EIA).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {gasLoading ? (
+                <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-teal-400" /></div>
+              ) : (
+                <ResponsiveContainer width="100%" height={320}>
+                  <ComposedChart data={monthlyPrices} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={v => `$${v}`} />
+                    <RechartsTooltip content={<CustomTooltip unit="/MMBtu" />} />
+                    <Legend />
+                    <Line dataKey="henry_hub" name="Henry Hub" stroke={C.teal}  dot={false} strokeWidth={2} connectNulls />
+                    <Line dataKey="waha"       name="Waha"       stroke={C.amber} dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Waha−HH Basis ($/MMBtu)</CardTitle>
+              <CardDescription>
+                Negative = Waha discount. When deeply negative, West Texas gas is stranded
+                and power plants near Waha run at near-zero fuel cost.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {gasLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-teal-400" /></div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={monthlyPrices} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={v => `$${v}`} />
+                    <RechartsTooltip content={<CustomTooltip unit="/MMBtu" />} />
+                    <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 2" />
+                    <Bar dataKey="wahaBasis" name="Waha−HH Basis" fill={C.purple}>
+                      {monthlyPrices.map((entry, index) => (
+                        <Cell
+                          key={index}
+                          fill={(entry.wahaBasis ?? 0) < -3 ? C.red : (entry.wahaBasis ?? 0) < 0 ? C.amber : C.green}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Daily price table (last 30 days) */}
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Recent Daily Prices</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="text-left py-2">Date</th>
+                      <th className="text-right py-2">Henry Hub</th>
+                      <th className="text-right py-2">Waha</th>
+                      <th className="text-right py-2">Basis</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {priceHistory.slice(-30).reverse().map((r, i) => (
+                      <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                        <td className="py-1.5 font-mono">{r.date}</td>
+                        <td className="py-1.5 text-right text-teal-400">
+                          {r.henry_hub != null ? `$${r.henry_hub.toFixed(3)}` : "—"}
+                        </td>
+                        <td className={`py-1.5 text-right ${r.waha != null && r.waha < 0 ? "text-red-400" : "text-amber-400"}`}>
+                          {r.waha != null ? `$${r.waha.toFixed(3)}` : "—"}
+                        </td>
+                        <td className={`py-1.5 text-right ${r.wahaBasis != null && r.wahaBasis < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                          {r.wahaBasis != null ? `$${r.wahaBasis.toFixed(3)}` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tab 2: Spark Spread Calculator ──────────────────────────── */}
+        <TabsContent value="spark" className="space-y-4">
+          {/* Controls */}
+          <Card className="bg-card border-border">
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap gap-6 items-end">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Power Node</label>
+                  <Select value={node} onValueChange={setNode}>
+                    <SelectTrigger className="w-40 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HUB_NODES.map(n => (
+                        <SelectItem key={n} value={n} className="text-xs">{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Gas Price Hub</label>
+                  <Select value={gasHub} onValueChange={setGasHub}>
+                    <SelectTrigger className="w-36 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="henry_hub" className="text-xs">Henry Hub</SelectItem>
+                      <SelectItem value="waha"       className="text-xs">Waha Hub</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 min-w-[200px]">
+                  <label className="text-xs text-muted-foreground">
+                    Heat Rate: <span className="text-foreground font-semibold">{heatRate.toFixed(1)}</span> MMBtu/MWh
+                  </label>
+                  <Slider
+                    min={6} max={14} step={0.5}
+                    value={[heatRate]}
+                    onValueChange={([v]) => setHeatRate(v)}
+                    className="w-48"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {heatRate <= 7.5 ? "CCGT (efficient)" : heatRate <= 9 ? "Combined cycle" : heatRate <= 11 ? "Gas CT (peaker)" : "Old steam / oil"}
+                  </p>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Spark Spread = Power Price − (Gas Price × Heat Rate)
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">
+                Monthly Spark Spread — {node} vs {gasHub === "henry_hub" ? "Henry Hub" : "Waha"} (HR {heatRate})
+              </CardTitle>
+              <CardDescription>
+                Green &gt;$10/MWh = gas plant profitable. Red &lt;$0 = plant is underwater.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sparkLoading ? (
+                <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-teal-400" /></div>
+              ) : (
+                <ResponsiveContainer width="100%" height={320}>
+                  <ComposedChart data={spreadRows} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} interval="preserveStartEnd" />
+                    <YAxis yAxisId="power" tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={v => `$${v}`} />
+                    <YAxis yAxisId="gas"  orientation="right" tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={v => `$${v}`} />
+                    <RechartsTooltip content={<CustomTooltip unit="/MWh" />} />
+                    <Legend />
+                    <ReferenceLine yAxisId="power" y={0}  stroke="#64748b" strokeDasharray="4 2" />
+                    <ReferenceLine yAxisId="power" y={10} stroke={C.green} strokeDasharray="3 3" strokeOpacity={0.5} label={{ value: "$10 threshold", fontSize: 10, fill: C.green }} />
+                    <Bar yAxisId="power" dataKey="sparkSpread" name="Spark Spread ($/MWh)" fill={C.green}>
+                      {spreadRows.map((entry, index) => (
+                        <Cell
+                          key={index}
+                          fill={(entry.sparkSpread ?? 0) > 10 ? C.green : (entry.sparkSpread ?? 0) < 0 ? C.red : C.amber}
+                        />
+                      ))}
+                    </Bar>
+                    <Line  yAxisId="power" dataKey="powerPrice" name="Power Price ($/MWh)" stroke={C.teal}  dot={false} strokeWidth={1.5} />
+                    <Line  yAxisId="gas"   dataKey="gasPrice"   name={`Gas ($/MMBtu)`}     stroke={C.amber} dot={false} strokeWidth={1.5} strokeDasharray="5 3" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Spark spread table */}
+          {spreadRows.length > 0 && (
+            <Card className="bg-card border-border">
+              <CardHeader><CardTitle className="text-base">Monthly Spark Spread Table</CardTitle></CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground">
+                        <th className="text-left py-2">Month</th>
+                        <th className="text-right py-2">Power ($/MWh)</th>
+                        <th className="text-right py-2">Gas ($/MMBtu)</th>
+                        <th className="text-right py-2">Fuel Cost ($/MWh)</th>
+                        <th className="text-right py-2">Spark Spread</th>
+                        <th className="text-right py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...spreadRows].reverse().map((r, i) => {
+                        const fuelCost = r.gasPrice != null ? r.gasPrice * heatRate : null;
+                        const spread   = r.sparkSpread;
+                        return (
+                          <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                            <td className="py-1.5">{r.label}</td>
+                            <td className="py-1.5 text-right text-teal-400">${r.powerPrice.toFixed(2)}</td>
+                            <td className="py-1.5 text-right text-amber-400">
+                              {r.gasPrice != null ? `$${r.gasPrice.toFixed(3)}` : "—"}
+                            </td>
+                            <td className="py-1.5 text-right text-muted-foreground">
+                              {fuelCost != null ? `$${fuelCost.toFixed(2)}` : "—"}
+                            </td>
+                            <td className={`py-1.5 text-right font-semibold ${spread == null ? "" : spread > 10 ? "text-green-400" : spread < 0 ? "text-red-400" : "text-amber-400"}`}>
+                              {spread != null ? `$${spread.toFixed(2)}` : "—"}
+                            </td>
+                            <td className="py-1.5 text-right">
+                              {spread == null ? "—" :
+                               spread > 10  ? <Badge className="bg-green-500/20 text-green-400 text-xs border-0">Profitable</Badge> :
+                               spread > 0   ? <Badge className="bg-amber-500/20 text-amber-400 text-xs border-0">Marginal</Badge> :
+                                              <Badge className="bg-red-500/20  text-red-400  text-xs border-0">Underwater</Badge>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ── Tab 3: Implied Heat Rate ────────────────────────────────── */}
+        <TabsContent value="heatrate" className="space-y-4">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Implied Heat Rate — {node} ÷ {gasHub === "henry_hub" ? "Henry Hub" : "Waha"}</CardTitle>
+              <CardDescription>
+                Implied HR = Power Price ÷ Gas Price. Above 12 → scarcity. Below 7 → renewables dominating.
+                This is the market's signal of gas plant optionality value.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {hrLoading ? (
+                <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-teal-400" /></div>
+              ) : (
+                <ResponsiveContainer width="100%" height={340}>
+                  <ComposedChart data={hrRows} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} domain={[0, "auto"]}
+                           tickFormatter={v => `${v}`} label={{ value: "MMBtu/MWh", angle: -90, position: "insideLeft", fontSize: 11, fill: "#64748b" }} />
+                    <RechartsTooltip content={<CustomTooltip unit=" MMBtu/MWh" />} />
+                    <Legend />
+                    <ReferenceLine y={7}  stroke={C.green}  strokeDasharray="4 2" label={{ value: "7 CCGT efficient", fontSize: 10, fill: C.green,  position: "right" }} />
+                    <ReferenceLine y={9}  stroke={C.amber}  strokeDasharray="4 2" label={{ value: "9 typical peaker", fontSize: 10, fill: C.amber,  position: "right" }} />
+                    <ReferenceLine y={12} stroke={C.red}    strokeDasharray="4 2" label={{ value: "12 scarcity zone",  fontSize: 10, fill: C.red,    position: "right" }} />
+                    <Area dataKey="impliedHeatRate" name="Implied Heat Rate" stroke={C.purple} fill={C.purple} fillOpacity={0.15} dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            {[
+              { label: "CCGT (efficient)", range: "6.5 – 7.5", color: "text-green-400", desc: "Renewables displacing gas; low-cost dispatch" },
+              { label: "Gas CT (peaker)",  range: "9.0 – 11.0", color: "text-amber-400", desc: "Normal gas-dominated dispatch; peakers in merit" },
+              { label: "Scarcity zone",    range: "≥ 12.0",     color: "text-red-400",   desc: "Grid stress; demand outpacing cheap supply" },
+            ].map(b => (
+              <Card key={b.label} className="bg-card border-border">
+                <CardContent className="pt-4">
+                  <p className={`text-sm font-semibold ${b.color}`}>{b.label}</p>
+                  <p className="text-xl font-bold text-foreground">{b.range}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{b.desc}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* ── Tab 4: Waha Basis Analysis ──────────────────────────────── */}
+        <TabsContent value="basis" className="space-y-4">
+          {!basisData?.data?.some(r => r.wahaAvg != null) && !basisLoading && (
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="pt-4 text-sm text-amber-400">
+                Waha price data not yet seeded. Henry Hub is available. Run{" "}
+                <code className="font-mono bg-muted px-1 rounded">pnpm --filter @workspace/scripts run seed-gas-prices</code>{" "}
+                to also fetch Waha from EIA.
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Waha−HH Basis alongside LZ_WEST Power Basis</CardTitle>
+              <CardDescription>
+                The Waha gas discount and West Texas power discount share the same root cause:
+                Permian takeaway capacity bottleneck. They move together — Waha basis is a
+                leading indicator for ERCOT West Texas power congestion.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {basisLoading ? (
+                <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-teal-400" /></div>
+              ) : (
+                <ResponsiveContainer width="100%" height={340}>
+                  <ComposedChart data={basisRows} margin={{ top: 5, right: 40, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} interval="preserveStartEnd" />
+                    <YAxis yAxisId="gas"   tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={v => `$${v}`}
+                           label={{ value: "$/MMBtu", angle: -90, position: "insideLeft", fontSize: 11, fill: "#64748b" }} />
+                    <YAxis yAxisId="power" orientation="right" tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={v => `$${v}`}
+                           label={{ value: "$/MWh", angle: 90, position: "insideRight", fontSize: 11, fill: "#64748b" }} />
+                    <RechartsTooltip content={<CustomTooltip />} />
+                    <Legend />
+                    <ReferenceLine yAxisId="gas" y={0} stroke="#64748b" strokeDasharray="4 2" />
+                    <Bar  yAxisId="gas"   dataKey="wahaBasis"  name="Waha−HH Basis ($/MMBtu)" fill={C.purple} fillOpacity={0.7} />
+                    <Line yAxisId="power" dataKey="powerBasis" name="LZ_WEST RT−DA Basis ($/MWh)" stroke={C.amber} dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base">HH vs Waha Monthly Averages</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {basisLoading ? <Loader2 className="h-6 w-6 animate-spin text-teal-400" /> : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={basisRows} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} interval="preserveStartEnd" />
+                      <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={v => `$${v}`} />
+                      <RechartsTooltip content={<CustomTooltip unit="/MMBtu" />} />
+                      <Legend />
+                      <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 2" />
+                      <Line dataKey="hhAvg"   name="Henry Hub" stroke={C.teal}  dot={false} strokeWidth={2} connectNulls />
+                      <Line dataKey="wahaAvg" name="Waha"      stroke={C.amber} dot={false} strokeWidth={2} connectNulls />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base">Waha Basis vs LZ_WEST Neg Price %</CardTitle>
+                <CardDescription className="text-xs">
+                  Correlation: when Waha blows negative, LZ_WEST negative price frequency rises.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {basisLoading ? <Loader2 className="h-6 w-6 animate-spin text-teal-400" /> : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <ScatterChart margin={{ top: 5, right: 20, bottom: 20, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      <XAxis dataKey="wahaBasis"  name="Waha Basis" tick={{ fontSize: 10, fill: "#64748b" }}
+                             label={{ value: "Waha Basis ($/MMBtu)", position: "insideBottom", offset: -10, fontSize: 11, fill: "#64748b" }}
+                             tickFormatter={v => `$${v}`} />
+                      <YAxis dataKey="negPricePct" name="Neg Price %" tick={{ fontSize: 10, fill: "#64748b" }}
+                             label={{ value: "Neg Price %", angle: -90, position: "insideLeft", fontSize: 11, fill: "#64748b" }} />
+                      <RechartsTooltip cursor={{ strokeDasharray: "3 3" }}
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0]?.payload as BasisRow & { label: string };
+                          return (
+                            <div className="rounded border p-2 text-xs" style={TOOLTIP_STYLE}>
+                              <p className="font-semibold">{d.label}</p>
+                              <p>Waha Basis: {d.wahaBasis != null ? `$${d.wahaBasis.toFixed(2)}` : "—"}</p>
+                              <p>LZ_WEST Neg Price: {d.negPricePct != null ? `${d.negPricePct.toFixed(1)}%` : "—"}</p>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Scatter
+                        data={basisRows.filter(r => r.wahaBasis != null && r.negPricePct != null)}
+                        fill={C.purple} fillOpacity={0.8}
+                      />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Context callout */}
+          <Card className="border-red-500/30 bg-red-500/5">
+            <CardContent className="pt-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 shrink-0" />
+                <div className="text-sm">
+                  <p className="font-semibold text-red-400 mb-1">Current Waha Market Condition (mid-2026)</p>
+                  <p className="text-muted-foreground">
+                    Waha has been deeply negative — prompt month fixed price hit <strong className="text-foreground">−$5.69/MMBtu</strong>,
+                    basis vs Henry Hub at <strong className="text-foreground">−$8.25/MMBtu</strong> — the longest-ever streak of consecutive
+                    negative trading sessions (89+). Targa + Kinetik shut in 620 MMcf/d from the Permian due to lack of
+                    pipeline takeaway. This directly suppresses LZ_WEST power prices and explains elevated West Texas curtailment.
+                    Gas plants near Waha effectively run at negative fuel cost.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tab 5: Market Context ────────────────────────────────────── */}
+        <TabsContent value="context" className="space-y-4">
+          {/* Spark spread by node at current gas prices */}
+          {summary && (
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base">Current Spark Spread by Node (HR 8.5 MMBtu/MWh)</CardTitle>
+                <CardDescription>
+                  West Texas nodes use Waha pricing; all others use Henry Hub. Based on latest monthly averages.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground">
+                        <th className="text-left py-2">Node</th>
+                        <th className="text-right py-2">Power ($/MWh)</th>
+                        <th className="text-right py-2">Gas Used</th>
+                        <th className="text-right py-2">Gas Price</th>
+                        <th className="text-right py-2">Fuel Cost</th>
+                        <th className="text-right py-2">Spark Spread</th>
+                        <th className="text-right py-2">Implied HR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.nodes
+                        .filter(n => n.node.startsWith("HB_") || n.node.startsWith("LZ_"))
+                        .map((n, i) => {
+                          const isWest = n.node === "LZ_WEST" || n.node === "HB_PAN";
+                          const fuelCost = n.gasPrice != null ? n.gasPrice * 8.5 : null;
+                          return (
+                            <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                              <td className="py-1.5 font-mono font-semibold">{n.node}</td>
+                              <td className="py-1.5 text-right text-teal-400">${n.powerPrice.toFixed(2)}</td>
+                              <td className="py-1.5 text-right text-muted-foreground text-xs">
+                                {isWest ? "Waha" : "HH"}
+                              </td>
+                              <td className={`py-1.5 text-right ${n.gasPrice != null && n.gasPrice < 0 ? "text-red-400" : "text-amber-400"}`}>
+                                {n.gasPrice != null ? `$${n.gasPrice.toFixed(2)}` : "—"}
+                              </td>
+                              <td className="py-1.5 text-right text-muted-foreground">
+                                {fuelCost != null ? `$${fuelCost.toFixed(2)}` : "—"}
+                              </td>
+                              <td className={`py-1.5 text-right font-semibold ${n.sparkSpread == null ? "" : n.sparkSpread > 10 ? "text-green-400" : n.sparkSpread < 0 ? "text-red-400" : "text-amber-400"}`}>
+                                {n.sparkSpread != null ? `$${n.sparkSpread.toFixed(2)}` : "—"}
+                              </td>
+                              <td className={`py-1.5 text-right ${n.impliedHR == null ? "" : n.impliedHR > 12 ? "text-red-400" : n.impliedHR < 7 ? "text-green-400" : "text-muted-foreground"}`}>
+                                {n.impliedHR != null ? n.impliedHR.toFixed(1) : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Heat rate benchmarks */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card className="bg-card border-border">
+              <CardHeader><CardTitle className="text-base">Heat Rate Benchmarks by Technology</CardTitle></CardHeader>
+              <CardContent>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="text-left py-2">Technology</th>
+                      <th className="text-right py-2">Heat Rate (MMBtu/MWh)</th>
+                      <th className="text-right py-2">At HH $3.50</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { tech: "CCGT (new)",    hr: 6.5,  },
+                      { tech: "CCGT (avg)",    hr: 7.2,  },
+                      { tech: "CCGT (old)",    hr: 7.8,  },
+                      { tech: "Gas CT",        hr: 9.5,  },
+                      { tech: "Gas CT (old)",  hr: 11.0, },
+                      { tech: "Oil/Gas steam", hr: 13.0, },
+                      { tech: "Oil peaker",    hr: 15.0, },
+                    ].map(r => (
+                      <tr key={r.tech} className="border-b border-border/40">
+                        <td className="py-1.5">{r.tech}</td>
+                        <td className="py-1.5 text-right text-teal-400">{r.hr}</td>
+                        <td className="py-1.5 text-right text-muted-foreground">${(r.hr * 3.50).toFixed(2)}/MWh</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card border-border">
+              <CardHeader><CardTitle className="text-base">Analytical Use Cases</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-xs">
+                  {[
+                    {
+                      icon: <Flame className="h-4 w-4 text-orange-400" />,
+                      title: "Spark Spread = Gas Plant P&L",
+                      desc: "Spark Spread = Power − (Gas × HR). When LZ_WEST DA is $22 and Waha is −$5, spark spread = $22 − (−$5 × 8.5) = $64.50/MWh.",
+                    },
+                    {
+                      icon: <TrendingUp className="h-4 w-4 text-teal-400" />,
+                      title: "Implied HR = Market's Gas Optionality Signal",
+                      desc: "Strips out the gas price component. Spikes during scarcity (Uri-style). Below 7 = renewables dominating. Cleaner signal than raw power price.",
+                    },
+                    {
+                      icon: <TrendingDown className="h-4 w-4 text-red-400" />,
+                      title: "Waha Basis = Congestion Leading Indicator",
+                      desc: "Waha discount widens → stranded Permian gas → cheap West Texas power → higher curtailment risk for solar/wind. Gas basis predicts power basis.",
+                    },
+                    {
+                      icon: <Zap className="h-4 w-4 text-amber-400" />,
+                      title: "Gas Price Sets the Power Floor",
+                      desc: "HH × 8.5 HR = ~$29.75/MWh at $3.50 gas. When DA drops below this, gas backs off and renewables dominate — but transmission constrains them.",
+                    },
+                  ].map((u, i) => (
+                    <div key={i} className="flex gap-2">
+                      <div className="shrink-0 mt-0.5">{u.icon}</div>
+                      <div>
+                        <p className="font-semibold text-foreground">{u.title}</p>
+                        <p className="text-muted-foreground mt-0.5">{u.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

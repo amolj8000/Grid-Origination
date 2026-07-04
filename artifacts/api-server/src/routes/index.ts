@@ -13,6 +13,7 @@ import ppaRouter from "./ppa";
 import loadForecastRouter from "./load_forecast";
 import datacentersRouter from "./datacenters";
 import regulatoryRouter from "./regulatory";
+import gasPricesRouter from "./gas_prices";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(ppaRouter);
 router.use(loadForecastRouter);
 router.use(datacentersRouter);
 router.use(regulatoryRouter);
+router.use(gasPricesRouter);
 
 export default router;
