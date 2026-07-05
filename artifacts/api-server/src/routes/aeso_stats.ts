@@ -748,6 +748,8 @@ router.get("/aeso/interchange", async (req, res) => {
 
 // ─── Live AESO ETS scraping helpers ─────────────────────────────────────────
 
+// AESO ETS is a legacy public utility portal that only serves plain HTTP —
+// it has no HTTPS endpoint. All data is publicly accessible with no auth.
 async function fetchAesoEts(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" },
