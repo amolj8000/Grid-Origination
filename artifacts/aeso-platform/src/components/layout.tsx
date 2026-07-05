@@ -11,6 +11,7 @@ import {
   Route,
   BrainCircuit,
   TrendingUp,
+  Workflow,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/queue", label: "Queue", icon: ListOrdered },
   { href: "/congestion", label: "Congestion", icon: Route },
   { href: "/lta", label: "LTA Metrics", icon: TrendingUp },
+  { href: "/rem", label: "REM", icon: Workflow },
   { href: "/qa", label: "Market Copilot", icon: BrainCircuit },
 ];
 
