@@ -746,4 +746,303 @@ router.get("/aeso/interchange", async (req, res) => {
   }
 });
 
+// ─── Live AESO ETS scraping helpers ─────────────────────────────────────────
+
+async function fetchAesoEts(url: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+    signal: AbortSignal.timeout(20000),
+  });
+  return res.text();
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// GET /api/aeso/outages/daily — live scrape from AESO ETS DailyOutageReportServlet
+router.get("/aeso/outages/daily", async (req, res) => {
+  try {
+    const html = await fetchAesoEts(
+      "http://ets.aeso.ca/ets_web/ip/Market/Reports/DailyOutageReportServlet?contentType=html"
+    );
+    const text = stripHtml(html);
+
+    const updatedMatch = text.match(/Last Updated:\s*([\w,\s:]+(?:AM|PM))/);
+    const lastUpdated = updatedMatch ? updatedMatch[1].trim() : null;
+
+    // Each row: DD-Mon-YYYY then 11 integers (SC Cogen CC GFS Hydro Wind Solar Storage Biomass MBO Load)
+    const rows: Array<Record<string, string | number>> = [];
+    const datePattern =
+      /(\d{2}-\w{3}-\d{4})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = datePattern.exec(text)) !== null) {
+      rows.push({
+        date: m[1],
+        sc: parseInt(m[2]),
+        cogen: parseInt(m[3]),
+        cc: parseInt(m[4]),
+        gfs: parseInt(m[5]),
+        hydro: parseInt(m[6]),
+        wind: parseInt(m[7]),
+        solar: parseInt(m[8]),
+        energyStorage: parseInt(m[9]),
+        biomassOther: parseInt(m[10]),
+        mbo: parseInt(m[11]),
+        load: parseInt(m[12]),
+      });
+    }
+
+    res.json({ lastUpdated, rows });
+  } catch (err) {
+    req.log.error({ err }, "getAesoOutagesDaily error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// GET /api/aeso/outages/monthly — live scrape from AESO ETS MonthlyOutageForecastReportServlet
+router.get("/aeso/outages/monthly", async (req, res) => {
+  try {
+    const html = await fetchAesoEts(
+      "http://ets.aeso.ca/ets_web/ip/Market/Reports/MonthlyOutageForecastReportServlet?contentType=html"
+    );
+    const text = stripHtml(html);
+
+    const updatedMatch = text.match(/Last Updated:\s*([\w,\s:]+(?:AM|PM))/);
+    const lastUpdated = updatedMatch ? updatedMatch[1].trim() : null;
+
+    // Each row: Mon YYYY then 10 integers (SC Cogen CC GFS Hydro Wind Solar Storage Biomass MBO)
+    const rows: Array<Record<string, string | number>> = [];
+    const monthPattern =
+      /(\w{3}\s+\d{4})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = monthPattern.exec(text)) !== null) {
+      rows.push({
+        month: m[1],
+        sc: parseInt(m[2]),
+        cogen: parseInt(m[3]),
+        cc: parseInt(m[4]),
+        gfs: parseInt(m[5]),
+        hydro: parseInt(m[6]),
+        wind: parseInt(m[7]),
+        solar: parseInt(m[8]),
+        energyStorage: parseInt(m[9]),
+        biomassOther: parseInt(m[10]),
+        mbo: parseInt(m[11]),
+      });
+    }
+
+    res.json({ lastUpdated, rows });
+  } catch (err) {
+    req.log.error({ err }, "getAesoOutagesMonthly error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// GET /api/aeso/hac/7day — live scrape from SevenDaysHourlyAvailableCapabilityReportServlet
+router.get("/aeso/hac/7day", async (req, res) => {
+  try {
+    const html = await fetchAesoEts(
+      "http://ets.aeso.ca/ets_web/ip/Market/Reports/SevenDaysHourlyAvailableCapabilityReportServlet?contentType=html"
+    );
+    const text = stripHtml(html);
+
+    const updatedMatch = text.match(/Last Updated:\s*([\w,\s:]+(?:AM|PM))/);
+    const lastUpdated = updatedMatch ? updatedMatch[1].trim() : null;
+
+    // Find all fuel type section headers: "FUELTYPE (MC = NNNN MW)"
+    const headerPattern = /([\w][\w\s&]+?)\s*\(\s*MC\s*=\s*(\d+)\s*MW\s*\)/g;
+    const sections: Array<{ name: string; mc: number; start: number }> = [];
+    let hm: RegExpExecArray | null;
+    while ((hm = headerPattern.exec(text)) !== null) {
+      let name = hm[1].trim().replace(/\s+/g, " ");
+      // If name contains digits or is too long, it captured garbage — take only last 1-3 words
+      if (/\d/.test(name) || name.length > 30) {
+        const parts = name.trim().split(/\s+/);
+        name = parts.slice(-3).join(" ").trim();
+      }
+      // Strip any remaining leading digit-only tokens (e.g. "23 24 SC" → "SC")
+      name = name.replace(/^(\d+\s+)+/, "").trim();
+      // Strip leading "nbsp" artifact
+      name = name.replace(/^nbsp\s+/i, "").trim();
+      if (!name || name.toLowerCase().includes("hour ending")) continue;
+      sections.push({ name, mc: parseInt(hm[2]), start: hm.index + hm[0].length });
+    }
+
+    const fuelTypes: Array<{
+      name: string;
+      mcMw: number;
+      rows: Array<{ date: string; hours: number[] }>;
+    }> = [];
+
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      const sectionText = text.substring(
+        section.start,
+        sections[i + 1]?.start ?? text.length
+      );
+
+      const dateRows: Array<{ date: string; hours: number[] }> = [];
+      // DD-Mon-YY followed by exactly 24 percentage values
+      const rowPattern = /(\d{2}-\w{3}-\d{2})\s+((?:\d+\.?\d*%\s*){24})/g;
+      let rm: RegExpExecArray | null;
+      while ((rm = rowPattern.exec(sectionText)) !== null) {
+        const hours = rm[2]
+          .trim()
+          .split(/\s+/)
+          .slice(0, 24)
+          .map((p) => parseFloat(p.replace("%", "")));
+        dateRows.push({ date: rm[1], hours });
+      }
+
+      if (dateRows.length > 0) {
+        fuelTypes.push({ name: section.name, mcMw: section.mc, rows: dateRows });
+      }
+    }
+
+    res.json({ lastUpdated, fuelTypes });
+  } catch (err) {
+    req.log.error({ err }, "getAesoHac7day error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// GET /api/aeso/csd — live scrape from CSDReportServlet
+router.get("/aeso/csd", async (req, res) => {
+  try {
+    const html = await fetchAesoEts(
+      "http://ets.aeso.ca/ets_web/ip/Market/Reports/CSDReportServlet"
+    );
+    const text = stripHtml(html);
+
+    // Match "Jul 05, 2026 16:57" — stop before any extra words like "DCR"
+    const updatedMatch = text.match(/Last Update\s*:\s*(\w{3}\s+\d{2},\s+\d{4}\s+\d{2}:\d{2})/);
+    const lastUpdated = updatedMatch ? updatedMatch[1].trim() : null;
+
+    // Summary fields
+    const parseSummaryField = (label: string): number | null => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const m = text.match(new RegExp(escaped + "\\s+(-?\\d+)"));
+      return m ? parseInt(m[1]) : null;
+    };
+
+    const summary = {
+      totalNetGenMw: parseSummaryField("Alberta Total Net Generation"),
+      netInterchangeMw: parseSummaryField("Net Actual Interchange"),
+      ailMw: parseSummaryField("Alberta Internal Load (AIL)"),
+      netToGridMw: parseSummaryField("Net-To-Grid Generation"),
+      crRequiredMw: parseSummaryField("Contingency Reserve Required"),
+      dcrMw: parseSummaryField("Dispatched Contingency Reserve (DCR)"),
+      dcrGenMw: parseSummaryField("Dispatched Contingency Reserve -Gen"),
+      dcrOtherMw: parseSummaryField("Dispatched Contingency Reserve -Other"),
+      ffrArmedMw: parseSummaryField("FFR Armed Dispatch"),
+      ffrOfferedMw: parseSummaryField("FFR Offered Volume"),
+      lltMw: parseSummaryField("Long Lead Time Volume"),
+    };
+
+    // Generation Groups (all caps names + 3 numbers)
+    const generationGroups: Array<{ name: string; mcMw: number; tngMw: number; dcrMw: number }> = [];
+    const genSectionMatch = text.match(
+      /GENERATION GROUP\s+MC\s+TNG\s+DCR\s+([\s\S]+?)(?=INTERCHANGE PATH|$)/
+    );
+    if (genSectionMatch) {
+      const groupPattern = /([A-Z][A-Z &]+[A-Z])\s+(\d+)\s+(\d+)\s+(\d+)/g;
+      let gm: RegExpExecArray | null;
+      while ((gm = groupPattern.exec(genSectionMatch[1])) !== null) {
+        const name = gm[1].trim();
+        if (name !== "MC TNG DCR" && name !== "TOTAL") {
+          generationGroups.push({
+            name,
+            mcMw: parseInt(gm[2]),
+            tngMw: parseInt(gm[3]),
+            dcrMw: parseInt(gm[4]),
+          });
+        }
+      }
+    }
+
+    // Total row
+    const totalMatch = text.match(/TOTAL\s+(\d+)\s+(\d+)\s+(\d+)/);
+    const total = totalMatch
+      ? { mcMw: parseInt(totalMatch[1]), tngMw: parseInt(totalMatch[2]), dcrMw: parseInt(totalMatch[3]) }
+      : null;
+
+    // Interchange paths
+    const interchangePaths: Array<{ path: string; flowMw: number }> = [];
+    const interchangeMatch = text.match(
+      /INTERCHANGE PATH\s+ACTUAL FLOW\s+([\s\S]+?)(?=GAS|COGEN|HYDRO|SOLAR|WIND|ENERGY|BIOMASS|TOTAL\s+-?\d)/i
+    );
+    if (interchangeMatch) {
+      const pathPattern = /([A-Za-z][A-Za-z\s]+?)\s+(-?\d+)/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = pathPattern.exec(interchangeMatch[1])) !== null) {
+        const path = pm[1].trim();
+        if (path && path.toUpperCase() !== "TOTAL" && path.length > 2) {
+          interchangePaths.push({ path, flowMw: parseInt(pm[2]) });
+        }
+      }
+    }
+
+    // Individual asset groups — parse each known fuel type section
+    const fuelGroupLabels = [
+      { label: "GAS Simple Cycle", key: "Simple Cycle" },
+      { label: "Cogeneration", key: "Cogeneration" },
+      { label: "Combined Cycle", key: "Combined Cycle" },
+      { label: "Gas Fired Steam", key: "Gas Fired Steam" },
+      { label: "HYDRO", key: "Hydro" },
+      { label: "SOLAR", key: "Solar" },
+      { label: "WIND", key: "Wind" },
+      { label: "OTHER", key: "Other" },
+      { label: "ENERGY STORAGE", key: "Energy Storage" },
+    ];
+
+    const assetGroups: Array<{
+      groupName: string;
+      assets: Array<{ name: string; mcMw: number; tngMw: number; dcrMw: number }>;
+    }> = [];
+
+    for (let i = 0; i < fuelGroupLabels.length; i++) {
+      const { label, key } = fuelGroupLabels[i];
+      const nextLabel = fuelGroupLabels[i + 1]?.label;
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const nextEscaped = nextLabel?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      const pattern = new RegExp(
+        escaped +
+          "\\s+ASSET\\s+MC\\s+TNG\\s+DCR\\s+([\\s\\S]+?)" +
+          (nextEscaped ? `(?=${nextEscaped}|$)` : "$")
+      );
+      const match = text.match(pattern);
+      if (!match) continue;
+
+      const assets: Array<{ name: string; mcMw: number; tngMw: number; dcrMw: number }> = [];
+      // Asset: "Name (CODE)[*^]? NNN NNN NNN"
+      const assetPattern = /([A-Za-z][A-Za-z\s#0-9\-']+\([A-Z0-9]+\)[*^]?)\s+(\d+)\s+(\d+)\s+(\d+)/g;
+      let am: RegExpExecArray | null;
+      while ((am = assetPattern.exec(match[1])) !== null) {
+        assets.push({
+          name: am[1].trim(),
+          mcMw: parseInt(am[2]),
+          tngMw: parseInt(am[3]),
+          dcrMw: parseInt(am[4]),
+        });
+      }
+      if (assets.length > 0) {
+        assetGroups.push({ groupName: key, assets });
+      }
+    }
+
+    res.json({ lastUpdated, summary, generationGroups, total, interchangePaths, assetGroups });
+  } catch (err) {
+    req.log.error({ err }, "getAesoCsd error");
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 export default router;
