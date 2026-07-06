@@ -65,12 +65,17 @@ function computeFinancials(assetType: string, capacityMw: number, market: string
 
 const router = Router();
 
-// Scoring weights per objective
+// Scoring weights per objective — must stay in sync with OBJECTIVES in rankings.tsx
 const OBJECTIVE_WEIGHTS: Record<string, Record<string, number>> = {
-  lowest_lcoe: { priceScore: 0.3, financialScore: 0.25, interconnectionScore: 0.15, locationScore: 0.1, curtailmentScore: 0.1, regulatoryScore: 0.05, environmentalScore: 0.02, gridStabilityScore: 0.01, demandProximityScore: 0.01, developmentRiskScore: 0.01 },
-  risk_adjusted_value: { priceScore: 0.2, financialScore: 0.15, regulatoryScore: 0.15, developmentRiskScore: 0.15, interconnectionScore: 0.1, curtailmentScore: 0.1, locationScore: 0.05, gridStabilityScore: 0.05, environmentalScore: 0.03, demandProximityScore: 0.02 },
-  load_hedge: { demandProximityScore: 0.25, gridStabilityScore: 0.2, locationScore: 0.15, priceScore: 0.15, interconnectionScore: 0.1, curtailmentScore: 0.05, regulatoryScore: 0.05, financialScore: 0.03, environmentalScore: 0.01, developmentRiskScore: 0.01 },
-  decarbonization: { environmentalScore: 0.3, curtailmentScore: 0.2, gridStabilityScore: 0.15, locationScore: 0.1, regulatoryScore: 0.1, priceScore: 0.05, interconnectionScore: 0.05, demandProximityScore: 0.03, financialScore: 0.01, developmentRiskScore: 0.01 },
+  risk_adjusted:    { curtailmentScore: 0.22, interconnectionScore: 0.18, locationScore: 0.15, priceScore: 0.12, financialScore: 0.10, demandProximityScore: 0.10, developmentRiskScore: 0.08, environmentalScore: 0.05 },
+  lowest_lcoe:      { priceScore: 0.30, curtailmentScore: 0.22, interconnectionScore: 0.15, locationScore: 0.12, financialScore: 0.10, demandProximityScore: 0.07, developmentRiskScore: 0.04 },
+  corporate_hedge:  { curtailmentScore: 0.30, interconnectionScore: 0.22, locationScore: 0.18, developmentRiskScore: 0.12, priceScore: 0.08, demandProximityScore: 0.07, financialScore: 0.03 },
+  decarbonization:  { demandProximityScore: 0.25, curtailmentScore: 0.22, environmentalScore: 0.20, financialScore: 0.13, interconnectionScore: 0.10, locationScore: 0.07, developmentRiskScore: 0.03 },
+  capacity_value:   { demandProximityScore: 0.35, curtailmentScore: 0.18, interconnectionScore: 0.15, priceScore: 0.12, locationScore: 0.10, developmentRiskScore: 0.07, financialScore: 0.03 },
+  merchant_upside:  { priceScore: 0.35, locationScore: 0.20, financialScore: 0.18, interconnectionScore: 0.12, curtailmentScore: 0.10, developmentRiskScore: 0.05 },
+  // Legacy aliases kept for backwards compatibility
+  risk_adjusted_value: { curtailmentScore: 0.22, interconnectionScore: 0.18, locationScore: 0.15, priceScore: 0.12, financialScore: 0.10, demandProximityScore: 0.10, developmentRiskScore: 0.08, environmentalScore: 0.05 },
+  load_hedge:       { curtailmentScore: 0.30, interconnectionScore: 0.22, locationScore: 0.18, developmentRiskScore: 0.12, priceScore: 0.08, demandProximityScore: 0.07, financialScore: 0.03 },
 };
 
 function computeOverallScore(candidate: Record<string, number | null>, objective = "risk_adjusted_value"): number {

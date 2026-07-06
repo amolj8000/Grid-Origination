@@ -4,7 +4,6 @@ import {
   useListCandidates,
   useDeleteCandidate,
   useCreateScreening,
-  useCreateCandidate,
   getListCandidatesQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,13 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Loader2, Search, Download, Save, Trash2, Plus, ArrowUpDown,
+  Loader2, Search, Download, Save, Trash2, ArrowUpDown,
   Wind, Sun, Zap, Flame, Droplets, Atom, Leaf, Info,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -125,7 +120,7 @@ const DIMS = [
     label: "RECs / Yr",
     shortLabel: "REC",
     color: "#a855f7",
-    tooltip: "Annual Renewable Energy Credit value = MWh generated × REC market price. ERCOT Texas TRC ~$1.50/MWh; CAISO WREGIS ~$10–12/MWh; PJM varies ($3.50–$15/MWh). Log-scaled 0–100. Non-renewable assets (gas, nuclear, coal) score 12.",
+    tooltip: "Annual Renewable Energy Credit value = MWh generated × REC market price. ERCOT Texas TRC ~$1.50/MWh; CAISO WREGIS ~$10–12/MWh. Log-scaled 0–100. Non-renewable assets (gas, nuclear, coal) score 0 — they are not REC-eligible.",
   },
 ];
 
@@ -217,13 +212,6 @@ export default function Rankings() {
   const [objective, setObjective] = useState<ObjectiveId>(
     (searchParams.get("objective") as ObjectiveId) || "risk_adjusted"
   );
-  const [addOpen, setAddOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newMarket, setNewMarket] = useState("ERCOT");
-  const [newAssetType, setNewAssetType] = useState("solar");
-  const [newCapacity, setNewCapacity] = useState("");
-  const [newState, setNewState] = useState("");
-  const [newCounty, setNewCounty] = useState("");
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -235,7 +223,6 @@ export default function Rankings() {
 
   const deleteCandidate = useDeleteCandidate();
   const createScreening = useCreateScreening();
-  const createCandidate = useCreateCandidate();
 
   const activeObjective = OBJECTIVES.find(o => o.id === objective) ?? OBJECTIVES[0];
 
@@ -320,31 +307,6 @@ export default function Rankings() {
     });
   };
 
-  const handleAddCandidate = () => {
-    if (!newName.trim() || !newCapacity) return;
-    createCandidate.mutate({
-      data: {
-        name: newName.trim(),
-        market: newMarket as any,
-        assetType: newAssetType as any,
-        capacityMw: parseFloat(newCapacity),
-        latitude: 0,
-        longitude: 0,
-        state: newState || undefined,
-        county: newCounty || undefined,
-        status: "active" as any,
-      },
-    }, {
-      onSuccess: () => {
-        toast({ title: "Candidate added" });
-        queryClient.invalidateQueries({ queryKey: getListCandidatesQueryKey() });
-        setAddOpen(false);
-        setNewName(""); setNewCapacity(""); setNewState(""); setNewCounty("");
-      },
-      onError: () => toast({ title: "Failed to add candidate", variant: "destructive" }),
-    });
-  };
-
   const SortHeader = ({ field, label }: { field: typeof sortField; label: string }) => (
     <button
       className={`flex items-center gap-1 hover:text-primary transition-colors ${sortField === field ? "text-primary" : ""}`}
@@ -368,9 +330,6 @@ export default function Rankings() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-              <Plus className="mr-1 h-4 w-4" /> Add
-            </Button>
             <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={!candidates?.length}>
               <Download className="mr-1 h-4 w-4" /> Export CSV
             </Button>
@@ -641,67 +600,6 @@ export default function Rankings() {
         </div>
       </div>
 
-      {/* Add dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Add Candidate</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Name *</Label>
-              <Input placeholder="e.g. West Texas Solar I" value={newName} onChange={e => setNewName(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Market *</Label>
-                <Select value={newMarket} onValueChange={setNewMarket}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ERCOT">ERCOT</SelectItem>
-                    <SelectItem value="CAISO">CAISO</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Asset Type *</Label>
-                <Select value={newAssetType} onValueChange={setNewAssetType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="solar">Solar</SelectItem>
-                    <SelectItem value="wind">Wind</SelectItem>
-                    <SelectItem value="storage">Storage</SelectItem>
-                    <SelectItem value="natural_gas">Natural Gas</SelectItem>
-                    <SelectItem value="hydro">Hydro</SelectItem>
-                    <SelectItem value="nuclear">Nuclear</SelectItem>
-                    <SelectItem value="biomass">Biomass</SelectItem>
-                    <SelectItem value="geothermal">Geothermal</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Capacity (MW) *</Label>
-              <Input type="number" placeholder="e.g. 200" value={newCapacity} onChange={e => setNewCapacity(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>State</Label>
-                <Input placeholder="e.g. TX" value={newState} onChange={e => setNewState(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>County</Label>
-                <Input placeholder="e.g. Pecos" value={newCounty} onChange={e => setNewCounty(e.target.value)} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddCandidate} disabled={!newName.trim() || !newCapacity || createCandidate.isPending}>
-              {createCandidate.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Add
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </TooltipProvider>
   );
 }

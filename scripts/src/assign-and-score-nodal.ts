@@ -338,7 +338,7 @@ function interconnectRiskScore(
 }
 
 function recScore(assetType: string, market: string, capacityMw: number): number {
-  if (!REC_ELIGIBLE.has(assetType) || capacityMw <= 0) return 12;
+  if (!REC_ELIGIBLE.has(assetType) || capacityMw <= 0) return 0;
   const cf = CF[assetType]?.[market] ?? 0.30;
   const recPrice = REC_PRICES[assetType]?.[market] ?? 2.00;
   const annualValueK = (capacityMw * cf * 8760 * recPrice) / 1000;

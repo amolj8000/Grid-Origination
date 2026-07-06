@@ -12,7 +12,7 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const [market, setMarket] = useState<string>("ERCOT");
   const [assetType, setAssetType] = useState<string>("solar");
-  const [objective, setObjective] = useState<string>("lowest_lcoe");
+  const [objective, setObjective] = useState<string>("risk_adjusted");
 
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
   const { data: breakdown, isLoading: isLoadingBreakdown } = useGetMarketBreakdown();
@@ -178,10 +178,12 @@ export default function Home() {
                     <SelectValue placeholder="Select objective" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="risk_adjusted">Risk-Adjusted Value</SelectItem>
                     <SelectItem value="lowest_lcoe">Lowest LCOE</SelectItem>
-                    <SelectItem value="risk_adjusted_value">Risk-Adjusted Value</SelectItem>
-                    <SelectItem value="load_hedge">Load Hedge</SelectItem>
-                    <SelectItem value="decarbonization">Decarbonization Impact</SelectItem>
+                    <SelectItem value="corporate_hedge">Corporate Load Hedge</SelectItem>
+                    <SelectItem value="decarbonization">Decarbonization</SelectItem>
+                    <SelectItem value="capacity_value">Capacity Value</SelectItem>
+                    <SelectItem value="merchant_upside">Merchant Upside</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
