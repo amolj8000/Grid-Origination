@@ -461,14 +461,14 @@ export default function ErcotDispatch() {
         </div>
       </div>
 
-      {/* Seed progress banner */}
+      {/* Seed coverage banner */}
       {daysSeeded < 850 && (
-        <div className="mb-4 p-3 rounded-lg bg-amber-900/30 border border-amber-700/50 flex items-center gap-3">
-          <Loader2 className="animate-spin text-amber-400 shrink-0" size={16} />
-          <p className="text-amber-300 text-xs">
-            Historical data loading in background — {daysSeeded} of 852 days complete ({(totalRows/1000).toFixed(0)}K rows).
-            Full Jan 2024 → May 2026 history available in ~{Math.round((852 - daysSeeded) * 14 / 3600)} hours.
-            Charts update as data arrives.
+        <div className="mb-4 p-3 rounded-lg bg-slate-800/60 border border-slate-600/50 flex items-center gap-3">
+          <Loader2 className="animate-spin text-teal-400 shrink-0" size={16} />
+          <p className="text-slate-300 text-xs">
+            <span className="font-semibold text-white">Seeding in progress:</span> {daysSeeded} of 852 days complete ({(totalRows/1e6).toFixed(2)}M rows).
+            Fetching Jan 2024 → May 2026 from ERCOT NP3-965-ER SCED disclosure files.
+            Charts update automatically as more dates land — refresh the page to see the latest count.
           </p>
         </div>
       )}

@@ -211,25 +211,21 @@ export default function ErcotGasPage() {
         <Card className="bg-card border-border">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground">Waha Hub (latest)</p>
-            <p className={`text-2xl font-bold ${wahaLatest && wahaLatest.price < 0 ? "text-red-400" : "text-amber-400"}`}>
-              {wahaLatest ? `$${wahaLatest.price.toFixed(2)}` : "—"}
+            <p className="text-2xl font-bold text-slate-500">
+              {wahaLatest ? `$${wahaLatest.price.toFixed(2)}` : "N/A"}
               <span className="text-sm font-normal text-muted-foreground ml-1">/MMBtu</span>
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5">{wahaLatest?.date ?? "no data"}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{wahaLatest ? wahaLatest.date : "Waha prices not seeded"}</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground">Waha−HH Basis (latest)</p>
             <p className={`text-2xl font-bold ${wahaBasisLatest && Number(wahaBasisLatest) < -2 ? "text-red-400" : "text-purple-400"}`}>
-              {wahaBasisLatest ? `$${wahaBasisLatest}` : "—"}
+              {wahaBasisLatest ? `$${wahaBasisLatest}` : "N/A"}
               <span className="text-sm font-normal text-muted-foreground ml-1">/MMBtu</span>
             </p>
-            {wahaBasisLatest && Number(wahaBasisLatest) < -3 && (
-              <p className="text-xs text-red-400 mt-0.5 flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3" /> Extreme negative basis
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground mt-0.5">{wahaBasisLatest ? "" : "Requires Waha prices"}</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -252,9 +248,21 @@ export default function ErcotGasPage() {
           <CardContent className="pt-4 text-sm text-amber-400">
             <strong>Gas price data not yet seeded.</strong> Run{" "}
             <code className="font-mono bg-muted px-1 rounded">pnpm --filter @workspace/scripts run seed-gas-prices</code>{" "}
-            to fetch Henry Hub (FRED) and Waha (EIA) prices since Jan 2024.
+            to fetch Henry Hub (FRED) prices since Jan 2024.
           </CardContent>
         </Card>
+      )}
+
+      {/* Waha note */}
+      {!noData && !wahaLatest && (
+        <div className="flex items-center gap-2 px-1 py-2 rounded text-xs text-muted-foreground border border-border/40 bg-muted/20">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-500/70 shrink-0" />
+          <span>
+            <strong className="text-foreground/70">Waha Hub prices not available.</strong>{" "}
+            Waha (West Texas) gas pricing requires a separate EIA API endpoint. Only Henry Hub (FRED DHHNGSP) is seeded.
+            Spark Spread and Basis analysis uses Henry Hub only.
+          </span>
+        </div>
       )}
 
       {/* Main tabs */}
