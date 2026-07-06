@@ -246,11 +246,12 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
       if (choice.finish_reason === "tool_calls" && choice.message.tool_calls?.length) {
         apiMessages.push(choice.message);
         for (const toolCall of choice.message.tool_calls) {
-          if (toolCall.function.name === "run_sql") {
+          const tc = toolCall as { type: string; id: string; function: { name: string; arguments: string } };
+          if (tc.function.name === "run_sql") {
             let toolResult: string;
             let rationale = "Querying database...";
             try {
-              const args = JSON.parse(toolCall.function.arguments) as { query: string; rationale: string };
+              const args = JSON.parse(tc.function.arguments) as { query: string; rationale: string };
               rationale = args.rationale ?? rationale;
               req.log.info({ query: args.query }, "copilot sql query");
               sendEvent({ type: "sql_query", rationale });
@@ -280,11 +281,11 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
               toolResult = JSON.stringify({ error: String(err) });
               sendEvent({ type: "sql_error", error: String(err) });
             }
-            apiMessages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult });
-          } else if (toolCall.function.name === "run_simulation") {
+            apiMessages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
+          } else if (tc.function.name === "run_simulation") {
             let toolResult: string;
             try {
-              const args = JSON.parse(toolCall.function.arguments) as {
+              const args = JSON.parse(tc.function.arguments) as {
                 simulation_type: string;
                 params: Record<string, unknown>;
                 rationale: string;
@@ -309,7 +310,7 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
               toolResult = JSON.stringify({ error: String(err) });
               sendEvent({ type: "simulation_error", error: String(err) });
             }
-            apiMessages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult });
+            apiMessages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
           }
         }
         toolRounds++;
@@ -672,10 +673,11 @@ ${msaDocLines ? `━━━ MSA RECENT DOCUMENTS (live from albertamsa.ca, cached
       if (choice.finish_reason === "tool_calls" && choice.message.tool_calls?.length) {
         apiMessages.push(choice.message);
         for (const toolCall of choice.message.tool_calls) {
-          if (toolCall.function.name === "run_sql") {
+          const tc = toolCall as { type: string; id: string; function: { name: string; arguments: string } };
+          if (tc.function.name === "run_sql") {
             let toolResult: string;
             try {
-              const args = JSON.parse(toolCall.function.arguments) as { query: string; rationale: string };
+              const args = JSON.parse(tc.function.arguments) as { query: string; rationale: string };
               req.log.info({ query: args.query }, "aeso copilot sql");
               sendEvent({ type: "sql_query", rationale: args.rationale ?? "Querying AESO data..." });
               const result = await runSafeQuery(args.query);
@@ -690,7 +692,7 @@ ${msaDocLines ? `━━━ MSA RECENT DOCUMENTS (live from albertamsa.ca, cached
               toolResult = JSON.stringify({ error: String(err) });
               sendEvent({ type: "sql_error", error: String(err) });
             }
-            apiMessages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult });
+            apiMessages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
           }
         }
         toolRounds++;

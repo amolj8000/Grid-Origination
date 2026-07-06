@@ -764,7 +764,7 @@ function LoadForecastSection() {
               }}
             />
             <Legend
-              formatter={(val) => ({ base: "Base Load (Regression)", ev: "EV Charging Increment", dc: "Datacenter Pipeline" })[val] ?? val}
+              formatter={(val: string) => ({ base: "Base Load (Regression)", ev: "EV Charging Increment", dc: "Datacenter Pipeline" } as Record<string, string>)[val] ?? val}
               wrapperStyle={{ color: "#94a3b8", fontSize: 11 }}
             />
             <Area

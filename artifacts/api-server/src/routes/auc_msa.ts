@@ -171,9 +171,9 @@ router.get("/aeso/msa/recent", async (req, res) => {
 
     const data = { updates: updates.slice(0, 10), docLinks: docItems, fetchedAt: new Date().toISOString() };
     setCache(cacheKey, data, HOUR);
-    res.json(data);
+    return res.json(data);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch MSA recent updates" });
+    return res.status(500).json({ error: "Failed to fetch MSA recent updates" });
   }
 });
 
