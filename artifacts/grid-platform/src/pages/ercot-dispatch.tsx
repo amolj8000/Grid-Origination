@@ -430,6 +430,16 @@ export default function ErcotDispatch() {
   const totalResources = status?.total_resources ?? 0;
   const daysSeeded     = status?.days_seeded     ?? 0;
 
+  const daysTotal = useMemo(() => {
+    const start   = new Date("2024-01-01").getTime();
+    const endMs   = Date.now() - 62 * 86_400_000;
+    return Math.max(0, Math.floor((endMs - start) / 86_400_000) + 1);
+  }, []);
+  const endDateLabel = useMemo(() => {
+    const d = new Date(Date.now() - 62 * 86_400_000);
+    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6">
       {/* Page header */}
@@ -456,18 +466,18 @@ export default function ErcotDispatch() {
           </div>
           <div>
             <p className="text-slate-400 text-xs">Days Seeded</p>
-            <p className="text-white font-bold">{daysSeeded} / 852</p>
+            <p className="text-white font-bold">{daysSeeded} / {daysTotal}</p>
           </div>
         </div>
       </div>
 
       {/* Seed coverage banner */}
-      {daysSeeded < 850 && (
+      {daysSeeded < daysTotal && (
         <div className="mb-4 p-3 rounded-lg bg-slate-800/60 border border-slate-600/50 flex items-center gap-3">
           <Loader2 className="animate-spin text-teal-400 shrink-0" size={16} />
           <p className="text-slate-300 text-xs">
-            <span className="font-semibold text-white">Seeding in progress:</span> {daysSeeded} of 852 days complete ({(totalRows/1e6).toFixed(2)}M rows).
-            Fetching Jan 2024 → May 2026 from ERCOT NP3-965-ER SCED disclosure files.
+            <span className="font-semibold text-white">Seeding in progress:</span> {daysSeeded} of {daysTotal} days complete ({(totalRows/1e6).toFixed(2)}M rows).
+            Fetching Jan 2024 → {endDateLabel} from ERCOT NP3-965-ER SCED disclosure files.
             Charts update automatically as more dates land — refresh the page to see the latest count.
           </p>
         </div>
