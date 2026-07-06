@@ -69,48 +69,134 @@ async function seedHenryHub() {
   return upsertRows(rows);
 }
 
-// ── Waha Hub — model-derived from Henry Hub + seasonal basis ──────────────
+// ── Waha Hub ──────────────────────────────────────────────────────────────
 //
-// EIA's free API only publishes Henry Hub spot prices. Waha (West Texas) hub
-// spot prices require commercial data providers (Platts, Argus, NGI).
-//
-// We derive Waha from Henry Hub using a seasonally-calibrated basis model
-// that reflects real market dynamics: Waha trades at a discount to HH due to
-// ERCOT west Texas pipeline constraints, which widens in spring/fall when
-// Permian wind is high and cooling/heating demand is low.
+// Strategy (priority order, highest wins):
+//   1. oilpriceapi.com NATURAL_GAS_WAHA (real, NGI-sourced) — available from
+//      ~Jul 2025 onwards, ~25 rows/page, paginated.
+//   2. Model-based fallback: Henry Hub + seasonally-calibrated basis, for
+//      dates not covered by the API (Jan 2024 – mid 2025).
 //
 // Basis calibration (Waha−HH, $/MMBtu):
-//   • Jan–Feb: −0.60  (winter demand tightens basis)
-//   • Mar:     −1.80  (spring wind ramp; pipeline starts filling)
-//   • Apr–May: −2.80  (peak wind, low demand; widest historical discount)
-//   • Jun–Aug: −1.40  (summer cooling demand tightens basis)
-//   • Sep–Oct: −1.00
-//   • Nov–Dec: −0.70  (approaching winter demand)
-//
-// Source labeled 'model' — not real market data. Skips dates already seeded
-// with source='eia' to avoid overwriting real data if ever available.
+//   Jan–Feb: −0.60, Mar: −1.80, Apr–May: −2.80, Jun–Aug: −1.40,
+//   Sep–Oct: −1.00, Nov–Dec: −0.70
 
 const WAHA_SEASONAL_BASIS: Record<number, number> = {
-  1: -0.60, 2: -0.60,            // Jan–Feb: winter demand
-  3: -1.80,                       // Mar: spring wind ramp
-  4: -2.80, 5: -2.80,            // Apr–May: peak Permian wind, low demand
-  6: -1.40, 7: -1.40, 8: -1.40, // Jun–Aug: summer cooling
-  9: -1.00, 10: -1.00,           // Sep–Oct: shoulder
-  11: -0.70, 12: -0.70,          // Nov–Dec: approaching winter
+  1: -0.60, 2: -0.60,
+  3: -1.80,
+  4: -2.80, 5: -2.80,
+  6: -1.40, 7: -1.40, 8: -1.40,
+  9: -1.00, 10: -1.00,
+  11: -0.70, 12: -0.70,
 };
 
-// Small deterministic daily noise (±$0.20) using date string as seed
 function dailyNoise(dateStr: string): number {
   let h = 0;
   for (let i = 0; i < dateStr.length; i++) h = (h * 31 + dateStr.charCodeAt(i)) >>> 0;
-  return ((h % 401) - 200) / 1000; // −0.200 … +0.200
+  return ((h % 401) - 200) / 1000;
+}
+
+async function upsertWahaRows(
+  rows: { date: string; price: number; source: string }[],
+  allowOverwrite: "real_only" | "all"
+) {
+  const PAGE = 500;
+  let total = 0;
+  for (let i = 0; i < rows.length; i += PAGE) {
+    const chunk = rows.slice(i, i + PAGE);
+    if (allowOverwrite === "real_only") {
+      // Only overwrite model rows (never overwrite real oilpriceapi data with model)
+      await db.execute(sql`
+        INSERT INTO gas_prices (hub, date, price, source)
+        VALUES ${sql.raw(chunk.map(r =>
+          `('waha', '${r.date}', ${r.price.toFixed(4)}, '${r.source}')`
+        ).join(", "))}
+        ON CONFLICT (hub, date) DO UPDATE SET
+          price  = EXCLUDED.price,
+          source = EXCLUDED.source
+        WHERE gas_prices.source NOT IN ('eia', 'oilpriceapi')
+      `);
+    } else {
+      // Real data always wins
+      await db.execute(sql`
+        INSERT INTO gas_prices (hub, date, price, source)
+        VALUES ${sql.raw(chunk.map(r =>
+          `('waha', '${r.date}', ${r.price.toFixed(4)}, '${r.source}')`
+        ).join(", "))}
+        ON CONFLICT (hub, date) DO UPDATE SET
+          price  = EXCLUDED.price,
+          source = EXCLUDED.source
+      `);
+    }
+    total += chunk.length;
+    process.stdout.write(`\r  upserted ${total}/${rows.length}`);
+  }
+  console.log();
+  return total;
 }
 
 async function seedWaha() {
-  console.log("Generating model-based Waha prices from Henry Hub + seasonal basis…");
-  console.log("  (EIA free API only publishes Henry Hub — Waha requires commercial data)");
+  let totalUpserted = 0;
 
-  // Pull Henry Hub prices from DB
+  // ── Step 1: Fetch real Waha from oilpriceapi.com ──────────────────────
+  const apiKey = process.env.OIL_PRICE_API_KEY;
+  if (apiKey) {
+    console.log("Fetching real Waha prices from oilpriceapi.com (NGI source)…");
+    const realRows: { date: string; price: number; source: string }[] = [];
+
+    for (let page = 1; page <= 30; page++) {
+      try {
+        const body = execSync(
+          `curl -s --max-time 15 -H "Authorization: Token ${apiKey}" ` +
+          `"https://api.oilpriceapi.com/v1/prices?by_code=NATURAL_GAS_WAHA&past=9999d&page=${page}"`,
+          { maxBuffer: 10 * 1024 * 1024 }
+        ).toString("utf8");
+
+        const parsed = JSON.parse(body);
+        const prices: Array<{ created_at: string; price: number }> =
+          parsed?.data?.prices ?? [];
+
+        if (!prices.length) {
+          console.log(`  Page ${page}: empty — done fetching`);
+          break;
+        }
+
+        for (const p of prices) {
+          const date = p.created_at.slice(0, 10);
+          if (!isNaN(p.price)) {
+            realRows.push({ date, price: p.price, source: "oilpriceapi" });
+          }
+        }
+        process.stdout.write(`\r  Page ${page}: +${prices.length} rows (total ${realRows.length})`);
+      } catch (e) {
+        console.warn(`\n  Page ${page} fetch failed:`, (e as Error).message);
+        break;
+      }
+    }
+    console.log();
+
+    // Deduplicate by date (keep first occurrence = newest per-day)
+    const seen = new Set<string>();
+    const deduped = realRows.filter(r => {
+      if (seen.has(r.date)) return false;
+      seen.add(r.date);
+      return true;
+    });
+
+    console.log(`  ${deduped.length} unique Waha dates from oilpriceapi`);
+    if (deduped.length) {
+      const n = await upsertWahaRows(deduped, "all");
+      totalUpserted += n;
+      const dates = deduped.map(r => r.date).sort();
+      console.log(`  Real data range: ${dates[0]} → ${dates[dates.length - 1]}`);
+    }
+  } else {
+    console.warn("  OIL_PRICE_API_KEY not set — skipping real Waha fetch.");
+  }
+
+  // ── Step 2: Model fallback for gaps (dates without real data) ─────────
+  console.log("Generating model-based Waha for dates without real data…");
+
   const hhRows = await db.execute<{ date: string; price: string }>(
     sql`SELECT date::text, price::text FROM gas_prices
         WHERE hub = 'henry_hub'
@@ -118,44 +204,25 @@ async function seedWaha() {
   );
 
   if (!hhRows.rows.length) {
-    console.warn("  No Henry Hub rows found — run Henry Hub seed first.");
-    return 0;
+    console.warn("  No Henry Hub rows — skipping model fill.");
+    return totalUpserted;
   }
 
-  console.log(`  Loaded ${hhRows.rows.length} Henry Hub rows as basis`);
-
-  const rows: { hub: string; date: string; price: number }[] = [];
-
+  const modelRows: { date: string; price: number; source: string }[] = [];
   for (const r of hhRows.rows) {
     const d = new Date(r.date);
     const month = d.getUTCMonth() + 1;
     const basis = WAHA_SEASONAL_BASIS[month] ?? -1.00;
     const noise = dailyNoise(r.date);
     const wahaPrice = Math.max(-5.0, Number(r.price) + basis + noise);
-    rows.push({ hub: "waha", date: r.date, price: wahaPrice });
+    modelRows.push({ date: r.date, price: wahaPrice, source: "model" });
   }
 
-  if (!rows.length) return 0;
+  console.log(`  ${modelRows.length} model rows (will skip real-data dates)`);
+  const m = await upsertWahaRows(modelRows, "real_only");
+  totalUpserted += m;
 
-  const PAGE = 500;
-  let total = 0;
-  for (let i = 0; i < rows.length; i += PAGE) {
-    const chunk = rows.slice(i, i + PAGE);
-    await db.execute(sql`
-      INSERT INTO gas_prices (hub, date, price, source)
-      VALUES ${sql.raw(chunk.map(r =>
-        `('${r.hub}', '${r.date}', ${r.price.toFixed(4)}, 'model')`
-      ).join(", "))}
-      ON CONFLICT (hub, date) DO UPDATE SET
-        price  = EXCLUDED.price,
-        source = EXCLUDED.source
-      WHERE gas_prices.source != 'eia'
-    `);
-    total += chunk.length;
-    process.stdout.write(`\r  upserted ${total}/${rows.length}`);
-  }
-  console.log();
-  return total;
+  return totalUpserted;
 }
 
 // ── main ───────────────────────────────────────────────────────────────────

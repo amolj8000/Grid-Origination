@@ -212,7 +212,7 @@ export default function ErcotGasPage() {
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               Waha Hub (latest)
-              {wahaLatest && <span className="text-[10px] bg-slate-700 text-slate-400 px-1 rounded">model</span>}
+              {wahaLatest?.source === "model" && <span className="text-[10px] bg-slate-700 text-slate-400 px-1 rounded">model</span>}
             </p>
             <p className={`text-2xl font-bold ${wahaLatest && wahaLatest.price < 0 ? "text-red-400" : "text-amber-400"}`}>
               {wahaLatest ? `$${wahaLatest.price.toFixed(2)}` : "N/A"}
@@ -225,7 +225,7 @@ export default function ErcotGasPage() {
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               Waha−HH Basis (latest)
-              {wahaBasisLatest && <span className="text-[10px] bg-slate-700 text-slate-400 px-1 rounded">model</span>}
+              {wahaLatest?.source === "model" && <span className="text-[10px] bg-slate-700 text-slate-400 px-1 rounded">model</span>}
             </p>
             <p className={`text-2xl font-bold ${wahaBasisLatest && Number(wahaBasisLatest) < -2 ? "text-red-400" : "text-purple-400"}`}>
               {wahaBasisLatest ? `$${wahaBasisLatest}` : "N/A"}
@@ -263,14 +263,14 @@ export default function ErcotGasPage() {
         </Card>
       )}
 
-      {/* Waha model note */}
+      {/* Waha data note */}
       {!noData && wahaLatest && (
         <div className="flex items-center gap-2 px-3 py-2 rounded text-xs text-muted-foreground border border-border/40 bg-muted/20">
           <AlertTriangle className="h-3.5 w-3.5 text-amber-500/70 shrink-0" />
           <span>
-            <strong className="text-foreground/70">Waha prices are model-derived.</strong>{" "}
-            EIA's free API only publishes Henry Hub. Waha is estimated using Henry Hub + a seasonally-calibrated basis
-            (widest in Apr–May when Permian wind peaks, tightest in winter). Real Waha data requires a commercial feed (Platts, Argus, NGI).
+            <strong className="text-foreground/70">Waha Hub: real prices from Feb 2025 (NGI via oilpriceapi.com).</strong>{" "}
+            Pre-Feb 2025 dates use a model-based estimate (Henry Hub + seasonal basis). Days marked{" "}
+            <span className="bg-slate-700 text-slate-400 px-1 rounded text-[10px]">model</span> are estimated.
           </span>
         </div>
       )}
@@ -301,7 +301,7 @@ export default function ErcotGasPage() {
             <CardHeader>
               <CardTitle className="text-base">Henry Hub vs Waha — Monthly Average ($/MMBtu)</CardTitle>
               <CardDescription>
-                Henry Hub: real (FRED DHHNGSP). Waha: model-derived (Henry Hub + seasonal basis).
+                Henry Hub: real daily (FRED DHHNGSP). Waha: real from Feb 2025 (NGI via oilpriceapi), model-estimated before.
               </CardDescription>
             </CardHeader>
             <CardContent>

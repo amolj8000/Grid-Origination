@@ -219,9 +219,9 @@ router.get("/gas-prices/summary", async (req, res) => {
   try {
     // Latest gas prices
     const latestGas = await db.execute<{
-      hub: string; date: string; price: string;
+      hub: string; date: string; price: string; source: string;
     }>(sql`
-      SELECT DISTINCT ON (hub) hub, date::text, price::float8
+      SELECT DISTINCT ON (hub) hub, date::text, price::float8, source
       FROM gas_prices WHERE price IS NOT NULL
       ORDER BY hub, date DESC
     `);
@@ -237,7 +237,7 @@ router.get("/gas-prices/summary", async (req, res) => {
     `);
 
     const gasByHub = Object.fromEntries(
-      latestGas.rows.map(r => [r.hub, { date: r.date, price: Number(r.price) }])
+      latestGas.rows.map(r => [r.hub, { date: r.date, price: Number(r.price), source: r.source }])
     );
 
     const HH_HR   = 8.5;
