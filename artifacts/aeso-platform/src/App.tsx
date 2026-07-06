@@ -15,6 +15,8 @@ import Congestion from "@/pages/congestion";
 import AesoQACopilot from "@/pages/qa";
 import LTA from "@/pages/lta";
 import REM from "@/pages/rem";
+import AUC from "@/pages/auc";
+import MSA from "@/pages/msa";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -33,6 +35,8 @@ function Router() {
         <Route path="/congestion" component={Congestion} />
         <Route path="/lta" component={LTA} />
         <Route path="/rem" component={REM} />
+        <Route path="/auc" component={AUC} />
+        <Route path="/msa" component={MSA} />
         <Route path="/qa" component={AesoQACopilot} />
         <Route component={NotFound} />
       </Switch>

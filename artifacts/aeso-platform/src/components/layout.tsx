@@ -12,6 +12,7 @@ import {
   BrainCircuit,
   TrendingUp,
   Workflow,
+  Eye,
 } from "lucide-react";
 
 const navItems = [
@@ -25,6 +26,8 @@ const navItems = [
   { href: "/congestion", label: "Congestion", icon: Route },
   { href: "/lta", label: "LTA Metrics", icon: TrendingUp },
   { href: "/rem", label: "REM", icon: Workflow },
+  { href: "/auc", label: "AUC", icon: Scale },
+  { href: "/msa", label: "MSA", icon: Eye },
   { href: "/qa", label: "Market Copilot", icon: BrainCircuit },
 ];
 
