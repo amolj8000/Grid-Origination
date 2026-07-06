@@ -45,7 +45,6 @@ const sidebarEntries: NavEntry[] = [
       ],
     },
   },
-  { title: "PJM Historical",       href: "/pjm",        icon: Activity },
   { title: "Nodal Analysis",       href: "/nodal",      icon: Layers },
   { title: "Congestion Analysis",  href: "/congestion", icon: GitBranch },
   {

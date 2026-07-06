@@ -781,7 +781,7 @@ export default function QACopilot() {
         </div>
 
         <p className="text-xs text-muted-foreground text-center shrink-0">
-          Copilot runs live PyPSA DC-OPF simulations + queries ERCOT/CAISO/PJM data · 3,875 EIA candidates · 263k hourly price records
+          Copilot runs live PyPSA DC-OPF simulations + queries ERCOT/CAISO data · 3,875 EIA candidates · 263k hourly price records
         </p>
       </div>
     </div>

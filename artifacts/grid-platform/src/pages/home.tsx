@@ -52,7 +52,7 @@ export default function Home() {
 
   const pivotedBreakdown = (() => {
     if (!breakdown || !Array.isArray(breakdown)) return [];
-    const rows = breakdown as BreakdownRow[];
+    const rows = (breakdown as BreakdownRow[]).filter(r => r.market === "ERCOT" || r.market === "CAISO");
     const markets = [...new Set(rows.map(r => r.market))].sort();
     const assetTypes = [...new Set(rows.map(r => r.assetType))];
     return markets.map(market => {
@@ -148,7 +148,6 @@ export default function Home() {
                   <SelectContent>
                     <SelectItem value="ERCOT">ERCOT</SelectItem>
                     <SelectItem value="CAISO">CAISO</SelectItem>
-                    <SelectItem value="PJM">PJM</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -164,6 +163,11 @@ export default function Home() {
                     <SelectItem value="storage">Storage</SelectItem>
                     <SelectItem value="solar_storage">Solar + Storage</SelectItem>
                     <SelectItem value="wind_storage">Wind + Storage</SelectItem>
+                    <SelectItem value="hydro">Hydro</SelectItem>
+                    <SelectItem value="nuclear">Nuclear</SelectItem>
+                    <SelectItem value="natural_gas">Natural Gas</SelectItem>
+                    <SelectItem value="geothermal">Geothermal</SelectItem>
+                    <SelectItem value="biomass">Biomass</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

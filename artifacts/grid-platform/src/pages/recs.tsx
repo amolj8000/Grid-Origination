@@ -36,11 +36,8 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const MARKET_COLORS: Record<string, string> = {
-  ERCOT: "#14b8a6", CAISO: "#f59e0b", PJM: "#8b5cf6",
+  ERCOT: "#14b8a6", CAISO: "#f59e0b",
 };
-
-// PJM states with meaningful REC/SREC markets — ordered by plant count
-const PJM_STATES = ["DC","DE","IL","IN","KY","MD","MI","MN","NC","NJ","OH","PA","TN","VA","WV"];
 
 function TypeIcon({ type }: { type: string }) {
   if (type === "solar" || type === "solar_storage") return <Sun className="h-3.5 w-3.5 shrink-0" style={{ color: TYPE_COLORS.solar }} />;
@@ -326,7 +323,7 @@ export default function RECAnalysis() {
               <h1 className="text-2xl font-bold tracking-tight">REC Analysis</h1>
             </div>
             <p className="text-muted-foreground text-sm">
-              Renewable Energy Credit valuation across ERCOT, CAISO, and PJM — solar, wind, hydro, geothermal, biomass only.
+              Renewable Energy Credit valuation across ERCOT and CAISO — solar, wind, hydro, geothermal, biomass only.
             </p>
           </div>
           <div className="flex rounded-md border border-border overflow-hidden shrink-0 self-start">
@@ -359,7 +356,6 @@ export default function RECAnalysis() {
               <SelectItem value="all">All Markets</SelectItem>
               <SelectItem value="ERCOT">ERCOT</SelectItem>
               <SelectItem value="CAISO">CAISO</SelectItem>
-              <SelectItem value="PJM">PJM</SelectItem>
             </SelectContent>
           </Select>
 
@@ -619,10 +615,10 @@ export default function RECAnalysis() {
 
               <p className="text-xs text-muted-foreground">
                 <span className="text-foreground font-medium">Generation:</span> Annual RECs (MWh) = Capacity (MW) × Capacity Factor × 8,760 h/yr.
-                Capacity factors: solar ERCOT 27%, CAISO 29%, PJM 22%; wind ERCOT 40%, CAISO 32%, PJM 35%; geothermal 88%; biomass 65%.
+                Capacity factors: solar ERCOT 27%, CAISO 29%; wind ERCOT 40%, CAISO 32%; geothermal 88%; biomass 65%.
                 {dataSource === "operational"
                   ? " Source: EIA Form 860 2024 — operable generators >1 MW. Year = commercial operation date (COD)."
-                  : " Source: interconnection queue filings across ERCOT / CAISO / PJM. Year = queue entry date."}
+                  : " Source: interconnection queue filings across ERCOT and CAISO. Year = queue entry date."}
               </p>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -666,50 +662,6 @@ export default function RECAnalysis() {
                   </table>
                 </div>
 
-                {/* PJM */}
-                <div className="bg-slate-800/50 rounded-md p-3 space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: MARKET_COLORS.PJM }}>
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MARKET_COLORS.PJM }} />
-                    PJM — State-Specific (GATS)
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    PJM GATS tracks RECs by state. Solar SRECs vary dramatically by state carve-out; wind/hydro/biomass trade as Class I RECs.
-                  </p>
-                  <table className="w-full text-xs mt-1">
-                    <thead>
-                      <tr className="text-muted-foreground">
-                        <th className="text-left font-normal">State</th>
-                        <th className="text-right font-normal">Solar SREC</th>
-                        <th className="text-right font-normal">Wind REC</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        ["DC",  "$430", "$8"],
-                        ["NJ",  "$185", "$7"],
-                        ["IL",   "$80", "$2"],
-                        ["MD",   "$75", "$6"],
-                        ["PA",   "$45", "$8"],
-                        ["DE",   "$20", "$5"],
-                        ["VA",    "$5", "$5"],
-                        ["NC",    "$3", "$3"],
-                        ["OH", "$1.50", "$1.50"],
-                        ["IN",    "$2", "$2"],
-                        ["WV",    "$1", "$1"],
-                        ["KY", "$0.75", "$0.75"],
-                      ].map(([s, sr, wr]) => (
-                        <tr key={s}>
-                          <td className="text-foreground py-0.5">{s}</td>
-                          <td className="text-right text-amber-400 font-medium">{sr}</td>
-                          <td className="text-right text-teal-400 font-medium">{wr}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p className="text-xs text-muted-foreground pt-1">
-                    Sources: PJM GATS, state PUC filings, SREC Trade (2024). DC/NJ/IL/MD/PA have active SREC markets.
-                  </p>
-                </div>
               </div>
             </div>
           </>

@@ -127,7 +127,7 @@ export default function InterconnectionQueue() {
       <div className="shrink-0 flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Interconnection Queue</h1>
-          <p className="text-muted-foreground">Track public generation queue applications across ERCOT, CAISO, and PJM.</p>
+          <p className="text-muted-foreground">Track public generation queue applications across ERCOT and CAISO.</p>
         </div>
         <div className="flex gap-4 text-right">
           <div>
@@ -247,7 +247,6 @@ export default function InterconnectionQueue() {
             <SelectItem value="all">All Markets</SelectItem>
             <SelectItem value="ERCOT">ERCOT</SelectItem>
             <SelectItem value="CAISO">CAISO</SelectItem>
-            <SelectItem value="PJM">PJM</SelectItem>
           </SelectContent>
         </Select>
         <Select value={statusFilter || "all"} onValueChange={v => setStatusFilter(v === "all" ? undefined : v)}>

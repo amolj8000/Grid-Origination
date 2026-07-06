@@ -247,7 +247,7 @@ function OBBBANavigator({ market }: { market: Market }) {
   // Wind PTC chart data: by market + bucket
   const windPtcChart = useMemo(() => {
     if (!elig) return [];
-    const markets = ["ERCOT", "CAISO", "PJM"];
+    const markets = ["ERCOT", "CAISO"];
     const buckets  = ["Expired", "1-2 yrs left", "3-5 yrs left", "6+ yrs left", "Unknown"];
     return buckets.map(b => {
       const row: Record<string, unknown> = { bucket: b };
@@ -389,7 +389,6 @@ function OBBBANavigator({ market }: { market: Market }) {
                   <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
                   <Bar dataKey="ERCOT" fill="#14b8a6" radius={[2,2,0,0]} />
                   <Bar dataKey="CAISO" fill="#f59e0b" radius={[2,2,0,0]} />
-                  <Bar dataKey="PJM"   fill="#8b5cf6" radius={[2,2,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

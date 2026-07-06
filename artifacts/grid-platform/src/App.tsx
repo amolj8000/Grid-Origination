@@ -9,7 +9,7 @@ import Rankings from "@/pages/rankings";
 import MapWorkspace from "@/pages/map";
 import ErcotHistorical from "@/pages/ercot";
 import CaisoHistorical from "@/pages/caiso";
-import PjmHistorical from "@/pages/pjm";
+
 import NodalAnalysis from "@/pages/nodal";
 import CongestionAnalysis from "@/pages/congestion";
 import InterconnectionQueue from "@/pages/queue";
@@ -54,7 +54,7 @@ function Router() {
         <Route path="/map" component={MapWorkspace} />
         <Route path="/ercot" component={ErcotHistorical} />
         <Route path="/caiso" component={CaisoHistorical} />
-        <Route path="/pjm" component={PjmHistorical} />
+
         <Route path="/nodal" component={NodalAnalysis} />
         <Route path="/congestion" component={CongestionAnalysis} />
         <Route path="/queue" component={InterconnectionQueue} />

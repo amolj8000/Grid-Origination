@@ -137,7 +137,7 @@ interface DcMarker {
 }
 
 // ── Filter constants ─────────────────────────────────────────────────────────
-const ISO_MARKETS = ["ERCOT", "CAISO", "PJM"] as const;
+const ISO_MARKETS = ["ERCOT", "CAISO"] as const;
 const EIA_LEGEND   = ["solar", "wind", "storage", "natural_gas", "nuclear", "hydro", "biomass", "geothermal", "hybrid"] as const;
 const QUEUE_LEGEND = ["solar", "wind", "offshore_wind", "storage", "natural_gas", "hybrid", "geothermal", "nuclear", "hydro"] as const;
 const EIA_FILTERABLE   = new Set<string>(EIA_LEGEND);
@@ -684,7 +684,7 @@ export default function MapWorkspace() {
             countLabel={showEia860 ? filteredCandidates.length.toLocaleString() : undefined}
           >
             {/* Market legend (pin color = ISO) */}
-            {(["ERCOT","CAISO","PJM"] as const).map(mkt => (
+            {(["ERCOT","CAISO"] as const).map(mkt => (
               <FuelRow
                 key={mkt}
                 fuelKey={mkt}

@@ -157,9 +157,6 @@ const PROXY_NODE_LABEL: Record<string, Record<string, string>> = {
     geothermal: "CAISO zone by lat/lon — baseload, near-zero curtailment risk",
     default: "CAISO zone by lat/lon (real OASIS neg-price %, 28 months)",
   },
-  PJM: {
-    default: "Zone by state (NI/AEP-Dayton/DOM/BGE/PSEG/PPL/Western Hub)",
-  },
 };
 
 // ─── REC value formatter ──────────────────────────────────────────────────────
@@ -432,7 +429,6 @@ export default function Rankings() {
               <SelectItem value="all">All Markets</SelectItem>
               <SelectItem value="ERCOT">ERCOT</SelectItem>
               <SelectItem value="CAISO">CAISO</SelectItem>
-              <SelectItem value="PJM">PJM</SelectItem>
             </SelectContent>
           </Select>
           <Select value={assetTypeFilter || "all"} onValueChange={v => setAssetTypeFilter(v === "all" ? undefined : v)}>
@@ -662,7 +658,6 @@ export default function Rankings() {
                   <SelectContent>
                     <SelectItem value="ERCOT">ERCOT</SelectItem>
                     <SelectItem value="CAISO">CAISO</SelectItem>
-                    <SelectItem value="PJM">PJM</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

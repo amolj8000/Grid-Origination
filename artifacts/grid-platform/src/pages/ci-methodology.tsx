@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 const SKILLS = [
-  "Power market analytics (ERCOT, CAISO, PJM)",
+  "Power market analytics (ERCOT, CAISO)",
   "LMP / congestion / basis risk analysis",
   "ERCOT CDR reports and API integration",
   "Data engineering (Python, Node.js, PostgreSQL)",

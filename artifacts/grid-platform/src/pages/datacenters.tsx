@@ -209,7 +209,7 @@ function StatusBadge({ status }: { status: string }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DatacentersPage() {
-  const [market,       setMarket]       = useState<"ALL" | "ERCOT" | "CAISO" | "PJM">("ALL");
+  const [market,       setMarket]       = useState<"ALL" | "ERCOT" | "CAISO">("ALL");
   const [statusFilter, setStatusFilter] = useState<"all" | "operational" | "construction" | "announced">("all");
   const [search,       setSearch]       = useState("");
 
@@ -256,13 +256,13 @@ export default function DatacentersPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-100">AI & Data Center Load</h1>
           <p className="text-slate-400 mt-1 text-sm">
-            Operational and pipeline hyperscale datacenters across ERCOT, CAISO, and PJM.
+            Operational and pipeline hyperscale datacenters across ERCOT and CAISO.
             Sources: company press releases, ERCOT large-load filings, EIA, news 2024–2025.
           </p>
         </div>
         {/* Market toggle */}
         <div className="flex gap-1 bg-slate-800/60 p-1 rounded-lg border border-slate-700/50">
-          {(["ALL", "ERCOT", "CAISO", "PJM"] as const).map(m => (
+          {(["ALL", "ERCOT", "CAISO"] as const).map(m => (
             <button
               key={m}
               onClick={() => setMarket(m)}

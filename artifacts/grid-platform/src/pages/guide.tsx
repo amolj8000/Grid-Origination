@@ -31,7 +31,7 @@ const USE_CASES = [
     title: "PPA / Offtake Origination",
     subtitle: "Source existing projects for energy offtake",
     description:
-      "Identify renewable energy projects (wind, solar, storage) that can enter into Power Purchase Agreements or offtake contracts to hedge a portion of an electricity portfolio across ERCOT, CAISO, and PJM.",
+      "Identify renewable energy projects (wind, solar, storage) that can enter into Power Purchase Agreements or offtake contracts to hedge a portion of an electricity portfolio across ERCOT and CAISO.",
     steps: [
       "Pull all operating projects from EIA 860 onto the Map Workspace",
       "Screen projects by capacity, technology, ISO, COD, and sponsor quality",
@@ -87,7 +87,7 @@ const TABS = [
         status: "live",
         summary:
           "Interactive Leaflet map showing 3,875 operational plants from EIA Form 860 (2024) and interconnection queue projects. Filter by market, fuel type, and capacity range (1 MW–3 GW). Click any plant to see its COD, capacity, owner, and operational status.",
-        dataSource: "EIA Form 860 2024 — Operable units >1 MW, ERCO/CISO/PJM balancing authority codes",
+        dataSource: "EIA Form 860 2024 — Operable units >1 MW, ERCO/CISO balancing authority codes",
         useCases: ["origination", "siting"],
       },
       {
@@ -136,8 +136,8 @@ const TABS = [
         color: C.amber,
         status: "live",
         summary:
-          "Browse the active interconnection queue across ERCOT, CAISO, and PJM. Filter by ISO, fuel type, capacity, and status. Identify how crowded a given transmission zone is — queue depth signals congestion risk for new projects in that corridor.",
-        dataSource: "CAISO queue from public ISO data (2,433 real projects); ERCOT/PJM seeded",
+          "Browse the active interconnection queue across ERCOT and CAISO. Filter by ISO, fuel type, capacity, and status. Identify how crowded a given transmission zone is — queue depth signals congestion risk for new projects in that corridor.",
+        dataSource: "CAISO queue from public ISO data (2,433 real projects); ERCOT: 1,793 real projects",
         useCases: ["siting"],
         roadmap: "Live queue data pull from ISO APIs + geographic clustering by substation",
       },
@@ -166,17 +166,6 @@ const TABS = [
         summary:
           "Monthly DA and RT LMP trends for CAISO's three pricing zones: NP15 (Northern CA), SP15 (Southern CA), and ZP26 (Central Valley). Price seasonality, summer peak risk, and hydro-driven volatility analysis.",
         dataSource: "Real CAISO OASIS PRC_LMP — NP15/SP15: 28 months; ZP26: 14 months",
-        useCases: ["origination", "siting"],
-      },
-      {
-        title: "PJM Historical",
-        href: "/pjm",
-        icon: Activity,
-        color: C.green,
-        status: "live",
-        summary:
-          "Monthly DA and RT analysis for PJM's 8 major hubs/zones: Western Hub, Eastern Hub, AEP-Dayton, NI Hub, PSEG, PPL, DOM, BGE. On/off-peak split, volatility metrics, zone spread analysis, and YoY comparison.",
-        dataSource: "Calibrated model from published PJM/EIA benchmarks — 14,336 rows",
         useCases: ["origination", "siting"],
       },
       {
@@ -533,19 +522,14 @@ export default function PlatformGuide() {
                 detail: "Real from CAISO OASIS PRC_LMP. NP15 + SP15: 28 months; ZP26: 14 months. RT modelled.",
               },
               {
-                label: "PJM Hub/Zone Prices",
-                status: "modelled",
-                detail: "14,336 rows. Calibrated model from published PJM/EIA monthly hub averages. No public real-time API.",
-              },
-              {
                 label: "Interconnection Queue",
-                status: "seeded",
-                detail: "CAISO: 2,433 real projects from public ISO data. ERCOT/PJM: synthetic seeded data.",
+                status: "real",
+                detail: "CAISO: 2,433 real projects from public ISO data. ERCOT: 1,793 real projects from GIS Report.",
               },
               {
                 label: "EIA 860 Project Database",
                 status: "real",
-                detail: "3,875 operable generators >1 MW from EIA Form 860 2024. Filtered by ERCO/CISO/PJM BA codes.",
+                detail: "3,875 operable generators >1 MW from EIA Form 860 2024. Filtered by ERCO/CISO BA codes.",
               },
               {
                 label: "PyPSA OPF Engine",

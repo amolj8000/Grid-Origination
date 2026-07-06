@@ -83,13 +83,13 @@ interface PpaNpvResult {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_PATH = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-const ISO_OPTIONS = ["ERCOT", "CAISO", "PJM"] as const;
+const ISO_OPTIONS = ["ERCOT", "CAISO"] as const;
 const TECH_LABELS: Record<string, string> = {
   solar: "Solar", wind: "Wind", storage: "Battery Storage",
   natural_gas: "Natural Gas", nuclear: "Nuclear", hydro: "Hydro",
   coal: "Coal", geothermal: "Geothermal", other: "Other",
 };
-const REC_BASE: Record<string, number> = { ERCOT: 2.0, CAISO: 7.0, PJM: 5.5 };
+const REC_BASE: Record<string, number> = { ERCOT: 2.0, CAISO: 7.0 };
 
 function techLabel(t: string) {
   return TECH_LABELS[t] ?? t.charAt(0).toUpperCase() + t.slice(1);
@@ -211,7 +211,7 @@ export default function PpaCalculator() {
 
   // Candidates
   const { data: candidatesData, isLoading: candidatesLoading } = useListCandidates(
-    selectedIso ? { market: selectedIso as "ERCOT" | "CAISO" | "PJM", limit: 2000 } : { limit: 0 }
+    selectedIso ? { market: selectedIso as "ERCOT" | "CAISO", limit: 2000 } : { limit: 0 }
   );
   const allForIso: Candidate[] = candidatesData ?? [];
 
