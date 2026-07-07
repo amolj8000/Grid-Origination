@@ -128,6 +128,7 @@ export default function PypsaNetwork() {
   const [solarCf,  setSolarCf]  = useState(25);
   const [gasPrice, setGasPrice] = useState(350);
   const [loadMw,   setLoadMw]   = useState(55000);
+  const gasMc = Math.round((gasPrice / 100) * 7500 / 10) / 100; // CC heat rate reference
   const [dirty,    setDirty]    = useState(false);
   const [selectedBus, setSelectedBus] = useState<OPFBus | null>(null);
 
@@ -319,7 +320,7 @@ export default function PypsaNetwork() {
                   <span className="text-muted-foreground">System Load</span>
                   <span className="font-mono text-teal-400">{(loadMw/1000).toFixed(0)} GW</span>
                 </div>
-                <Slider min={30000} max={75000} step={1000} value={[loadMw]}
+                <Slider min={10000} max={100000} step={1000} value={[loadMw]}
                   onValueChange={([v]) => { setLoadMw(v); setDirty(true); }} />
               </div>
               <div>
@@ -343,9 +344,21 @@ export default function PypsaNetwork() {
                   <span className="text-muted-foreground">Gas Price</span>
                   <span className="font-mono text-orange-400">${(gasPrice/100).toFixed(2)}/MMBtu</span>
                 </div>
-                <Slider min={200} max={800} step={10} value={[gasPrice]}
+                <Slider min={50} max={1300} step={25} value={[gasPrice]}
                   onValueChange={([v]) => { setGasPrice(v); setDirty(true); }} />
               </div>
+            </div>
+          )}
+
+          {!historicalMode && (
+            <div className="mt-3 px-3 py-2 rounded bg-slate-800/60 border border-slate-700/50 text-xs text-muted-foreground flex gap-2 items-start">
+              <Info className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
+              <span>
+                <span className="text-slate-300 font-medium">How LMPs respond to sliders: </span>
+                <span className="text-orange-400 font-medium">Gas Price</span> is the primary avg LMP driver — it shifts all gas generator marginal costs and is directly visible in the "Gas Ref MC" card.{" "}
+                <span className="text-teal-400 font-medium">Wind/Solar CF</span> affects dispatch mix and LMP spread (congestion) but not the system average when gas is still the marginal unit.{" "}
+                <span className="text-sky-400 font-medium">System Load</span> drives congestion at high levels (≥75 GW) and pushes peakers into dispatch at $499/MWh.
+              </span>
             </div>
           )}
 
@@ -411,14 +424,15 @@ export default function PypsaNetwork() {
           )}
 
           {/* KPI strip */}
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+          <div className="grid grid-cols-3 md:grid-cols-7 gap-3">
             {[
               { label: "System Load", value: `${(result.system_load_mw/1000).toFixed(1)} GW`, sub: "total demand", color: "text-sky-400" },
-              { label: "Avg LMP",    value: `$${result.avg_lmp.toFixed(2)}`,           sub: "/MWh",   color: "text-teal-400" },
-              { label: "LMP Spread", value: `$${result.lmp_spread.toFixed(2)}`,         sub: "/MWh",   color: result.lmp_spread > 5 ? "text-amber-400" : "text-teal-400" },
-              { label: "Renewable",  value: `${result.renewable_pct.toFixed(1)}%`,      sub: "of gen", color: "text-emerald-400" },
-              { label: "Total Cost", value: `$${(result.total_cost_per_hour/1000).toFixed(0)}k`, sub: "/hour", color: "text-amber-400" },
-              { label: "Congested",  value: String(result.congested_lines),             sub: "lines",  color: result.congested_lines > 0 ? "text-red-400" : "text-emerald-400" },
+              { label: "Avg LMP",    value: `$${result.avg_lmp.toFixed(2)}`,           sub: "/MWh system avg",   color: "text-teal-400" },
+              { label: "Gas Ref MC", value: `$${gasMc.toFixed(2)}`,                    sub: "CC @ current gas",  color: "text-orange-400" },
+              { label: "LMP Spread", value: `$${result.lmp_spread.toFixed(2)}`,         sub: "max−min /MWh",     color: result.lmp_spread > 5 ? "text-amber-400" : "text-teal-400" },
+              { label: "Renewable",  value: `${result.renewable_pct.toFixed(1)}%`,      sub: "of dispatch",      color: "text-emerald-400" },
+              { label: "Total Cost", value: `$${(result.total_cost_per_hour/1000).toFixed(0)}k`, sub: "/hour",   color: "text-amber-400" },
+              { label: "Congested",  value: String(result.congested_lines),             sub: "lines",            color: result.congested_lines > 0 ? "text-red-400" : "text-emerald-400" },
             ].map(kpi => (
               <Card key={kpi.label} className="bg-card border-border">
                 <CardContent className="pt-3 pb-2 px-3">

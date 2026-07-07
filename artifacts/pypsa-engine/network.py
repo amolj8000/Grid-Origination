@@ -428,6 +428,7 @@ def _build_tier2(
         logger.info("Tier 2 capacity-weighted load: %d buses loaded", load_assigned_count)
 
     # ── Emergency peakers at major zone hubs ──────────────────────────────────
+    # Keeps large zone-level reserves (visible in dispatch chart)
     PEAKER_ZONES = {
         "LZ_HOUSTON": 30000, "LZ_NORTH": 20000, "LZ_SOUTH": 20000,
         "LZ_WEST": 15000, "LZ_AEN": 8000, "LZ_CPS": 8000, "LZ_LCRA": 5000,
@@ -439,9 +440,24 @@ def _build_tier2(
             zone_top_bus[zone] = (bus, cap)
 
     for zone, (bus, _) in zone_top_bus.items():
-        pnom = PEAKER_ZONES.get(zone, 5000)
+        pnom = max(PEAKER_ZONES.get(zone, 5000), system_load_mw * 0.30)
         n.add("Generator", f"{bus}-peaker", bus=bus, carrier="peaker",
               p_nom=float(pnom), marginal_cost=499.0, p_max_pu=1.0, p_min_pu=0.0)
+
+    # ── Per-bus last-resort generators (guarantee LP feasibility at any load) ─
+    # At high system loads (≥70 GW) or whenever zone peakers can't reach every
+    # loaded bus via transmission, the LP becomes infeasible. Adding a small
+    # last-resort generator at each loaded bus (cost $999/MWh) ensures the
+    # problem always has a feasible solution — they only dispatch if transmission
+    # is genuinely insufficient to serve local load.
+    for load_name in list(n.loads.index):
+        bus_name = str(n.loads.at[load_name, "bus"])
+        load_set  = float(n.loads.at[load_name, "p_set"])
+        gen_name  = f"{bus_name}-lsr"
+        if gen_name not in n.generators.index:
+            n.add("Generator", gen_name, bus=bus_name, carrier="peaker",
+                  p_nom=load_set * 1.3, marginal_cost=999.0,
+                  p_max_pu=1.0, p_min_pu=0.0)
 
     return n
 
