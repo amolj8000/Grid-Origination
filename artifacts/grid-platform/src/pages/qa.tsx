@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
+import { useLocation } from "wouter";
 import { CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, User, Send, BrainCircuit, Zap, Loader2, Database, TableIcon, BarChart2, Activity, Cpu } from "lucide-react";
+import { Bot, User, Send, BrainCircuit, Zap, Loader2, Database, TableIcon, BarChart2, Activity, Cpu, Globe, ExternalLink, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -46,7 +47,14 @@ type SimulationBlock = {
   result: Record<string, unknown>;
 };
 
-type Block = TableBlock | ChartBlock | SimulationBlock;
+type WebSearchBlock = {
+  type: "websearch";
+  query: string;
+  answer: string;
+  results: Array<{ title: string; url: string; snippet: string }>;
+};
+
+type Block = TableBlock | ChartBlock | SimulationBlock | WebSearchBlock;
 
 interface Message {
   role: "user" | "assistant";
@@ -95,6 +103,58 @@ function formatCellValue(value: unknown): string {
 
 function formatColHeader(col: string): string {
   return col.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function WebSearchResultBlock({ block }: { block: WebSearchBlock }) {
+  return (
+    <div className="mt-3 rounded-lg border border-border overflow-hidden bg-card/80">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card/50">
+        <Globe className="h-3.5 w-3.5 text-blue-400" />
+        <span className="text-xs font-medium text-muted-foreground">Web search: <span className="text-foreground">{block.query}</span></span>
+      </div>
+      <div className="p-3 space-y-2">
+        {block.results.length === 0 && (
+          <p className="text-xs text-muted-foreground italic">No results found.</p>
+        )}
+        {block.results.map((r, i) => (
+          <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+            className="block rounded border border-border bg-card/60 px-3 py-2 hover:border-blue-400/50 hover:bg-blue-500/5 transition-colors group">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-medium text-blue-400 group-hover:underline leading-tight">{r.title}</p>
+              <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{r.snippet}</p>
+            <p className="text-xs text-muted-foreground/50 mt-0.5 truncate">{r.url}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function renderMarkdown(text: string, onNavigate: (path: string) => void): React.ReactNode {
+  const LINK_RE = /\[([^\]]+)\]\((\/[^)]+)\)/g;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = LINK_RE.exec(text)) !== null) {
+    if (m.index > last) {
+      parts.push(<span key={`t-${last}`}>{text.slice(last, m.index)}</span>);
+    }
+    const label = m[1];
+    const path = m[2];
+    parts.push(
+      <button key={`l-${m.index}`} onClick={() => onNavigate(path)}
+        className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded text-xs font-medium bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-colors align-baseline">
+        <ArrowRight className="h-3 w-3" />{label}
+      </button>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) {
+    parts.push(<span key={`t-${last}`}>{text.slice(last)}</span>);
+  }
+  return <>{parts}</>;
 }
 
 function DataTable({ block }: { block: TableBlock }) {
@@ -461,21 +521,22 @@ function SimulationResultBlock({ block }: { block: SimulationBlock }) {
 const SUGGESTED = [
   "What happens to HB_PAN LMPs if wind CF increases from 40% to 65%?",
   "How much load shedding if 3 GW of thermal is derated 15% at peak load?",
-  "What is the arbitrage value of a 200 MW / 4-hour battery at HB_WEST?",
+  "What are current ERCOT TRC REC spot prices and CAISO WREGIS prices?",
   "Which ERCOT nodes have the highest negative price frequency?",
 ];
 
 export default function QACopilot() {
+  const [, navigate] = useLocation();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content:
-        "I'm the Grid Origination Copilot. I can query live market data AND run live PyPSA DC-OPF power simulations to answer what-if scenarios.\n\nTry asking: \"What happens to HB_PAN if wind CF goes to 65%?\" or \"What's the arbitrage value of a 200 MW battery at HB_WEST?\"",
+        "I'm the Grid Origination Copilot. I can query live market data, run PyPSA OPF simulations, and search the web for current prices, news, and regulatory updates.\n\nTry: \"What are current ERCOT TRC REC prices?\" or \"What happens to HB_PAN if wind CF goes to 65%?\"",
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ text: string; type: "sql" | "sim" } | null>(null);
+  const [statusMsg, setStatusMsg] = useState<{ text: string; type: "sql" | "sim" | "web" } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -533,6 +594,17 @@ export default function QACopilot() {
           sqlQueryLog.push(data.rationale);
         } else if (data.type === "sql_done" || data.type === "sql_error") {
           setStatusMsg(null);
+        } else if (data.type === "search_web_start") {
+          setStatusMsg({ text: typeof data.rationale === "string" ? data.rationale : "Searching the web...", type: "web" });
+        } else if (data.type === "search_web_done") {
+          setStatusMsg(null);
+          pendingBlocks.push({
+            type: "websearch",
+            query: data.query as string,
+            answer: data.answer as string,
+            results: data.results as Array<{ title: string; url: string; snippet: string }>,
+          });
+          updateLastMessage();
         } else if (data.type === "simulation_start") {
           const simType = SIM_TYPE_LABELS[data.simulation_type as string] ?? String(data.simulation_type);
           const msg = typeof data.rationale === "string" ? data.rationale : `Running ${simType}...`;
@@ -713,6 +785,8 @@ export default function QACopilot() {
                     >
                       {msg.content === "" && isLoading && i === messages.length - 1 ? (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : msg.role === "assistant" ? (
+                        renderMarkdown(msg.content, navigate)
                       ) : (
                         msg.content
                       )}
@@ -729,6 +803,9 @@ export default function QACopilot() {
                             if (block.type === "simulation") {
                               return <SimulationResultBlock key={`s-${bi}`} block={block} />;
                             }
+                            if (block.type === "websearch") {
+                              return <WebSearchResultBlock key={`w-${bi}`} block={block} />;
+                            }
                             return null;
                           })}
                         </div>
@@ -743,6 +820,8 @@ export default function QACopilot() {
                   <div className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center bg-secondary border border-border">
                     {statusMsg.type === "sim"
                       ? <Cpu className="h-4 w-4 text-primary animate-pulse" />
+                      : statusMsg.type === "web"
+                      ? <Globe className="h-4 w-4 text-blue-400 animate-pulse" />
                       : <Database className="h-4 w-4 text-primary animate-pulse" />
                     }
                   </div>
@@ -750,6 +829,8 @@ export default function QACopilot() {
                     className="flex items-center gap-2 px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm border"
                     style={statusMsg.type === "sim"
                       ? { background: "rgba(20,184,166,0.1)", borderColor: "rgba(20,184,166,0.3)", color: "#14b8a6" }
+                      : statusMsg.type === "web"
+                      ? { background: "rgba(59,130,246,0.1)", borderColor: "rgba(59,130,246,0.3)", color: "#60a5fa" }
                       : { background: "rgba(20,184,166,0.08)", borderColor: "rgba(20,184,166,0.2)", color: "#14b8a6" }
                     }
                   >
@@ -781,7 +862,7 @@ export default function QACopilot() {
         </div>
 
         <p className="text-xs text-muted-foreground text-center shrink-0">
-          Copilot runs live PyPSA DC-OPF simulations + queries ERCOT/CAISO data · 3,875 EIA candidates · 263k hourly price records
+          Live DB queries · PyPSA DC-OPF simulations · Web search (DuckDuckGo) · 3,875 EIA candidates · all platform tabs accessible
         </p>
       </div>
     </div>

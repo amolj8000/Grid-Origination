@@ -25,6 +25,50 @@ async function runSafeQuery(query: string): Promise<{ columns: string[]; rows: R
   };
 }
 
+async function searchWeb(query: string): Promise<{ answer: string; results: Array<{ title: string; url: string; snippet: string }> }> {
+  try {
+    const encoded = encodeURIComponent(query);
+    const ddgUrl = `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1&t=GridCopilot`;
+    const resp = await fetch(ddgUrl, {
+      headers: { "User-Agent": "GridCopilot/1.0 (energy-market-research)" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!resp.ok) throw new Error(`DDG API ${resp.status}`);
+    const data = await resp.json() as {
+      AbstractText?: string;
+      AbstractURL?: string;
+      RelatedTopics?: Array<{ Text?: string; FirstURL?: string; Topics?: Array<{ Text?: string; FirstURL?: string }> }>;
+      Results?: Array<{ Text?: string; FirstURL?: string; Title?: string }>;
+    };
+    const results: Array<{ title: string; url: string; snippet: string }> = [];
+    if (data.AbstractText && data.AbstractURL) {
+      results.push({ title: "Summary", url: data.AbstractURL, snippet: data.AbstractText.slice(0, 600) });
+    }
+    for (const r of data.Results ?? []) {
+      if (r.FirstURL && r.Text) {
+        results.push({ title: r.Title ?? r.Text.slice(0, 80), url: r.FirstURL, snippet: r.Text.slice(0, 400) });
+      }
+      if (results.length >= 5) break;
+    }
+    for (const t of data.RelatedTopics ?? []) {
+      if (results.length >= 5) break;
+      if (t.Text && t.FirstURL) {
+        results.push({ title: t.Text.split(" - ")[0].trim().slice(0, 100), url: t.FirstURL, snippet: t.Text.slice(0, 400) });
+      }
+      for (const st of t.Topics ?? []) {
+        if (results.length >= 5) break;
+        if (st.Text && st.FirstURL) {
+          results.push({ title: st.Text.split(" - ")[0].trim().slice(0, 100), url: st.FirstURL, snippet: st.Text.slice(0, 400) });
+        }
+      }
+    }
+    const answer = data.AbstractText ?? (results.length > 0 ? results.slice(0, 3).map(r => r.snippet).join(" | ") : "No results found.");
+    return { answer: answer.slice(0, 1200), results: results.slice(0, 5) };
+  } catch {
+    return { answer: "Web search temporarily unavailable.", results: [] };
+  }
+}
+
 router.post("/chat", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -106,7 +150,7 @@ router.post("/chat", async (req, res) => {
 
     const systemPrompt = `You are the Grid Origination Copilot — an expert AI assistant for power market siting, PPA origination, and energy procurement across ERCOT, CAISO, and PJM.
 
-You have a live PostgreSQL database with real market data. Use the run_sql tool when you need specific data not already shown below. Always be quantitative and cite data sources.
+You have a live PostgreSQL database with real market data. Use the run_sql tool when you need specific data not already shown below. Use search_web for current prices, recent news, regulatory updates, or any information not in the database. Always be quantitative and cite data sources.
 
 ━━━ DATABASE SCHEMA ━━━
 TABLE candidates  (3,875 rows — EIA 860 operable generators >1 MW)
@@ -135,6 +179,28 @@ TABLE queue_projects  (interconnection queue — ERCOT/CAISO/PJM)
 TABLE ercot_hub_hourly  (263,130 rows — hourly DA+RT for 15 ERCOT hub/zone nodes)
   node, node_type, year, month, day, hour, da_price, rt_price
 
+TABLE hourly_temperatures  (232,848 rows — real observed hourly weather Jan 2024–Jun 2026)
+  iso (ERCOT/CAISO), zone (COAS/EAST/FWES/NCEN/NRTH/SCEN/SOUT/WEST/NP15/SP15/ZP26),
+  year, month, day, hour, temp_f, temp_c
+
+TABLE temperature_forecasts  (12,056 rows — climatological daily forecast Jul 2026–Jun 2029)
+  iso, zone, year, month, day,
+  temp_mean_f, temp_min_f, temp_max_f
+  -- climatological projection: historical avg + 0.3°F/yr warming trend
+
+TABLE datacenters  (55 rows — major AI/hyperscaler facilities)
+  id, name, operator, market (ERCOT/CAISO/PJM), state, lat, lon,
+  capacity_mw, status (OPERATING/UNDER_CONSTRUCTION/PLANNED), cod_date, nearest_zone, source
+
+TABLE regulatory_items  (30 rows — energy policy and regulatory events)
+  id, title, market (ERCOT/CAISO/PJM/FEDERAL), category (reliability/market_rules/environmental/interconnection/transmission/tax_credits),
+  effective_date, description, impact, source_url
+
+TABLE load_forecasts  (8,768 rows — ERCOT zonal load forecast Jul 2026–Jun 2029)
+  iso, zone, year, month, day,
+  base_load_mw, ev_increment_mw, dc_increment_mw, total_load_mw,
+  temp_mean_f, scenario (base/high_ev/high_dc)
+
 ━━━ LIVE ERCOT HUB/ZONE STATS (real CDR data, 28-month avg) ━━━
 ${fmt(ercotHubs.rows)}
 
@@ -153,14 +219,40 @@ ${topCandidates.rows.map(r => `  ${r.name.substring(0,35).padEnd(36)} ${r.market
 ━━━ PIPELINE SUMMARY (market × technology) ━━━
 ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(14)} n=${String(r.count).padStart(5)}  avg_score=${r.avg_score}  avg_mw=${r.avg_mw}`).join("\n")}
 
+━━━ PLATFORM TABS — ADDITIONAL CONTEXT ━━━
+Temperature tab: Real hourly temperatures by zone (hourly_temperatures, Jan 2024–Jun 2026) + 3-yr daily forecast (temperature_forecasts, Jul 2026–Jun 2029). Use for cooling/heating degree days, load-temperature regression, summer peak risk. ERCOT zones: COAS/EAST/FWES/NCEN/NRTH/SCEN/SOUT/WEST. CAISO zones: NP15/SP15/ZP26.
+
+EV Charging tab: Shows EV fleet adoption impact on ERCOT load by zone. Uses load_forecasts.ev_increment_mw. Peak EV charging typically 6-10 PM; overnight level-2 is 10 PM–6 AM. NCEN (Dallas) and SCEN (Austin/San Antonio) expect highest EV growth. Use load_forecasts for forward-looking zone load projections.
+
+AI & Datacenters tab: 55 hyperscaler/AI data center facilities (datacenters table). Heavy concentration in ERCOT NCEN zone (Dallas area). Load growth via load_forecasts.dc_increment_mw. ERCOT total DC load projected to reach 40+ GW by 2030 per ERCOT forecasts. Query datacenters table for specific facilities.
+
+Regulatory tab: 30 curated policy items (regulatory_items table). Key items: IRA ITC 30%+10%+10% adders, ERCOT weatherization SB 3, CAISO SB 100 (100% clean by 2045), RTCO market reform (delayed to 2027), FERC Order 2023 interconnection queue reform. Use search_web for recent regulatory developments beyond the DB.
+
+REC Analysis tab: Driven by candidates (EIA 860) + queue_projects. Annual RECs = capacity_mw × CF × 8,760h. Reference REC prices (market estimates, not live): ERCOT TRC ~$1.50/MWh, CAISO WREGIS Cat 1 ~$10–12/MWh, PJM SREC/TREC ~$4–8/MWh. Only solar/wind/hydro/storage are REC-eligible; gas/nuclear/coal score 0. Use search_web for current REC spot market prices.
+
+NPV Calculator tab: VPPA NPV model via /api/ppa-npv. Computes P10/P50/P90 based on nodal price distributions (real ercot_node_stats/caiso_node_stats data). User inputs: strike price, tenor (yrs), discount rate, degradation. Tax credits: ITC = 30% base + 10% energy community + 10% domestic content (ERCOT qualifies for energy community adder in most zones). PTC ~$2.76/MWh (2024 indexed). Use run_sql on ercot_node_stats for historical price distributions to advise on strike pricing.
+
+━━━ PLATFORM NAVIGATION DEEP LINKS ━━━
+When your answer references data the user could explore in the platform, include a markdown navigation link. Only include when genuinely useful — at most 2 per response.
+Supported routes (use exact format [Label](/path?params)):
+- [View in Rankings](/rankings?market=ERCOT&assetType=wind) — params: market=(ERCOT|CAISO|PJM), assetType=(wind|solar|storage|natural_gas|nuclear|hydro|coal)
+- [Open Nodal Analysis](/nodal) — ERCOT/CAISO settlement point spread calculator
+- [View Congestion Map](/congestion) — ERCOT DA-RT spread heatmap and node rankings
+- [Open Queue](/queue?market=ERCOT) — interconnection queue; params: market=(ERCOT|CAISO|PJM)
+- [Open Map](/map) — EIA 860 project map with all 3,875 candidates
+- [Regulatory Items](/regulatory) — energy policy and regulatory event tracker
+- [Temperature Forecast](/weather) — zone temperature history and 3-yr forecast
+- [REC Analysis](/recs) — renewable energy certificate portfolio analysis
+
 ━━━ GUIDANCE ━━━
-- run_sql for: filtering candidates by criteria, node price history, congestion event counts, DA-RT spread analysis, queue depth by zone, within-zone resource node comparisons, time-series trends, battery arbitrage value (DA-RT spread capture)
+- run_sql for: filtering candidates by criteria, node price history, congestion event counts, DA-RT spread analysis, queue depth by zone, within-zone resource node comparisons, time-series trends, battery arbitrage value (DA-RT spread capture), temperature/load data, datacenter load, regulatory items
 - run_simulation for: ALL "what if" scenario questions that require running power flow — new generation additions, wind/solar CF changes, thermal derates, load shedding, transmission upgrades, battery dispatch. Prefer run_simulation over run_sql for any forward-looking scenario.
   • opf — base OPF: params { system_load_mw, wind_cf, solar_cf, gas_price_mmbtu }. Returns nodal LMPs, line flows, congestion rent, curtailment. Use for "what happens to HB_PAN if wind CF goes to 65%?"
   • curtailment — vary CF, see curtailment MW + negative-price risk per zone: params { system_load_mw, wind_cf, solar_cf, gas_price_mmbtu, west_wind_bonus_pct }
   • tx_relief — upgrade one transmission line, compare before/after: params { system_load_mw, wind_cf, solar_cf, gas_price_mmbtu, upgrade_line (one of NORTH-HOUSTON/NORTH-WEST/NORTH-SOUTH/WEST-PAN/WEST-SOUTH/SOUTH-HOUSTON), extra_capacity_pct }
   • scarcity — thermal derate + high load → load shedding + price spikes: params { system_load_mw (keep ≤65000 for ERCOT; 55000 is a realistic peak), wind_cf, solar_cf, gas_derate_pct (0-50), nuclear_derate_pct (optional, 0-100) }
   • battery — 24-hr multi-period OPF with StorageUnit: params { system_load_mw, battery_mw, battery_mwh, price_delta_factor }
+- search_web for: current REC prices, recent FERC/ERCOT/CAISO regulatory filings, current natural gas prices, latest queue reform news, company/project background, any data not in the DB or newer than Jun 2026.
 - All prices in $/MWh. neg_price_percent = % of monthly intervals with price < $0.
 - Congestion risk ↑ when volatility is high and DA-RT spreads are wide.
 - Curtailment risk ↑ when neg_price_percent is high (ERCOT wind LZ_WEST ~7-22%, solar worse).
@@ -187,6 +279,28 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
               rationale: {
                 type: "string",
                 description: "One-line reason for the query (shown to user as loading indicator)",
+              },
+            },
+            required: ["query", "rationale"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "search_web",
+          description:
+            "Search the web for current information not in the database: live REC prices, recent FERC/ERCOT/CAISO regulatory filings, current natural gas/commodity prices, latest news about energy projects or companies, queue reform updates, or any data newer than June 2026. Returns a summary and up to 5 source links.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Natural language search query — be specific and include market context (e.g. 'ERCOT Texas REC TRC price 2025', 'FERC Order 2023 interconnection queue reform update').",
+              },
+              rationale: {
+                type: "string",
+                description: "One-line reason for the search (shown to user as loading indicator)",
               },
             },
             required: ["query", "rationale"],
@@ -280,6 +394,19 @@ ${pipelineSummary.rows.map(r => `  ${r.market.padEnd(7)} ${r.asset_type.padEnd(1
             } catch (err) {
               toolResult = JSON.stringify({ error: String(err) });
               sendEvent({ type: "sql_error", error: String(err) });
+            }
+            apiMessages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
+          } else if (tc.function.name === "search_web") {
+            let toolResult: string;
+            try {
+              const args = JSON.parse(tc.function.arguments) as { query: string; rationale: string };
+              req.log.info({ query: args.query }, "copilot web search");
+              sendEvent({ type: "search_web_start", rationale: args.rationale ?? `Searching: ${args.query}` });
+              const webResult = await searchWeb(args.query);
+              sendEvent({ type: "search_web_done", query: args.query, answer: webResult.answer, results: webResult.results });
+              toolResult = JSON.stringify(webResult);
+            } catch (err) {
+              toolResult = JSON.stringify({ error: String(err) });
             }
             apiMessages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
           } else if (tc.function.name === "run_simulation") {
