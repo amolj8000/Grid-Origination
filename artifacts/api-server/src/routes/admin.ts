@@ -1142,4 +1142,12 @@ router.post("/admin/reseed-load-forecasts", requireAdminKey, (req, res) => {
   res.json({ jobId, statusUrl: `/api/admin/jobs/${jobId}`, message: "Seeding load_forecasts via compute-load-forecast.py" });
 });
 
+// ── POST /api/admin/reseed-temperatures-fast ──────────────────────────────────
+// Spawns seed-temperatures-fast.py — seeds all 11 zones via synthetic
+// climatological data + execute_values bulk inserts (~2-3 min, no API calls).
+router.post("/admin/reseed-temperatures-fast", requireAdminKey, (req, res) => {
+  const jobId = spawnPython("seed-temperatures-fast");
+  res.json({ jobId, statusUrl: `/api/admin/jobs/${jobId}`, message: "Seeding hourly_temperatures (all 11 zones, synthetic, fast) via seed-temperatures-fast.py" });
+});
+
 export default router;
