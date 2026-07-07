@@ -58,7 +58,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [solar, wind, storage, solar_storage, wind_storage]
+            enum: [solar, wind, storage, natural_gas, hydro, nuclear, biomass, geothermal]
         - name: status
           in: query
           schema:
@@ -1119,7 +1119,7 @@ components:
           enum: [ERCOT, CAISO, PJM]
         assetType:
           type: string
-          enum: [solar, wind, storage, solar_storage, wind_storage]
+          enum: [solar, wind, storage, natural_gas, hydro, nuclear, biomass, geothermal]
         status:
           type: string
           enum: [active, inactive, under_review, contracted]

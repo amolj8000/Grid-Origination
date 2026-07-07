@@ -23,7 +23,16 @@ export const listCandidatesQueryOffsetDefault = 0;
 export const ListCandidatesQueryParams = zod.object({
   market: zod.enum(["ERCOT", "CAISO", "PJM"]).optional(),
   assetType: zod
-    .enum(["solar", "wind", "storage", "solar_storage", "wind_storage"])
+    .enum([
+      "solar",
+      "wind",
+      "storage",
+      "natural_gas",
+      "hydro",
+      "nuclear",
+      "biomass",
+      "geothermal",
+    ])
     .optional(),
   status: zod
     .enum(["active", "inactive", "under_review", "contracted"])
@@ -119,8 +128,11 @@ export const CreateCandidateBody = zod.object({
     "solar",
     "wind",
     "storage",
-    "solar_storage",
-    "wind_storage",
+    "natural_gas",
+    "hydro",
+    "nuclear",
+    "biomass",
+    "geothermal",
   ]),
   status: zod
     .enum(["active", "inactive", "under_review", "contracted"])
@@ -242,8 +254,11 @@ export const UpdateCandidateBody = zod.object({
     "solar",
     "wind",
     "storage",
-    "solar_storage",
-    "wind_storage",
+    "natural_gas",
+    "hydro",
+    "nuclear",
+    "biomass",
+    "geothermal",
   ]),
   status: zod
     .enum(["active", "inactive", "under_review", "contracted"])
