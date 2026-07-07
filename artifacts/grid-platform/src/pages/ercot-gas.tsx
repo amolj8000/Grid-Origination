@@ -60,7 +60,7 @@ interface SummaryNode {
   sparkSpread: number | null; impliedHR: number | null;
 }
 interface Summary {
-  latestGas: Record<string, { date: string; price: number }>;
+  latestGas: Record<string, { date: string; price: number; source?: string }>;
   nodes: SummaryNode[];
   benchmarks: Record<string, { label: string; minHR: number; maxHR: number }>;
 }

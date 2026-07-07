@@ -483,8 +483,9 @@ function NodeLocationsBrowser() {
     const fuzzy  = nodes.filter(n => n.locationSource === "eia_fuzzy_match").length;
     const queue  = nodes.filter(n => n.locationSource === "queue_latlon_match").length;
     const county = nodes.filter(n => n.locationSource === "county_centroid").length;
+    const nominatim = nodes.filter(n => n.locationSource === "nominatim_poi").length;
     const cent   = nodes.filter(n => n.locationSource === "zone_centroid").length;
-    return { total: nodes.length, exact, fuzzy, queue, county, geo: exact + fuzzy + queue + county, cent };
+    return { total: nodes.length, exact, fuzzy, queue, county, nominatim, geo: exact + fuzzy + queue + county + nominatim, cent };
   }, [nodes]);
 
   const priceColor = (p: number | null) => {
@@ -507,7 +508,7 @@ function NodeLocationsBrowser() {
             <CardDescription className="text-xs mt-0.5">
               {stats.total} nodes · ERCOT Bus Mapping (CDR 10008) via gridstatus ·{" "}
               <span className="text-teal-400">{stats.geo} geo-located</span>{" "}
-              <span className="text-muted-foreground">({stats.exact} exact · {stats.fuzzy} fuzzy EIA · {stats.queue} queue · {stats.county} county)</span> ·{" "}
+              <span className="text-muted-foreground">({stats.exact} exact · {stats.fuzzy} fuzzy EIA · {stats.queue} queue · {stats.county} county · {stats.nominatim} POI)</span> ·{" "}
               <span className="text-muted-foreground">{stats.cent} zone centroid</span> · Apr–May 2026 pricing
             </CardDescription>
           </div>
@@ -606,6 +607,11 @@ function NodeLocationsBrowser() {
                           <span className="flex items-center gap-1 text-slate-400/70">
                             <MapPin className="h-2.5 w-2.5" />
                             <span className="text-[10px]">{n.eiaPlantName ? n.eiaPlantName.slice(0, 22) : "County centroid"}</span>
+                          </span>
+                        ) : n.locationSource === "nominatim_poi" ? (
+                          <span className="flex items-center gap-1 text-cyan-400/80">
+                            <MapPin className="h-2.5 w-2.5" />
+                            <span className="text-[10px]">{n.eiaPlantName ? n.eiaPlantName.slice(0, 22) : "POI geocoded"}</span>
                           </span>
                         ) : (
                           <span className="text-[10px] text-muted-foreground">{n.loadZone} centroid</span>
