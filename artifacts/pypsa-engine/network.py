@@ -159,6 +159,26 @@ def _load_zone_data_from_db(year: int, month: int, day: int, hour: int) -> dict[
         return None
 
 
+def _load_gas_price_from_db(year: int, month: int, day: int) -> float | None:
+    """Return Henry Hub spot price for the given date (or closest prior trading day)."""
+    try:
+        import psycopg2
+        from datetime import date as _date
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT price FROM gas_prices
+            WHERE hub = 'henry_hub' AND date <= %s AND price > 0
+            ORDER BY date DESC LIMIT 1
+        """, (_date(year, month, day),))
+        row = cur.fetchone()
+        conn.close()
+        return float(row[0]) if row else None
+    except Exception as e:
+        logger.warning("Could not load gas price from DB: %s", e)
+        return None
+
+
 def _load_fuel_mix_from_db(year: int, month: int, day: int, hour: int) -> dict[str, float] | None:
     try:
         import psycopg2
@@ -515,10 +535,13 @@ def run_opf(
                 cfs = _derive_cfs_from_fuel_mix(fuel_mix, yr)
                 wind_cf  = cfs["wind_cf"]
                 solar_cf = cfs["solar_cf"]
+                real_gas = _load_gas_price_from_db(yr, mo, dy)
+                if real_gas is not None:
+                    gas_price_mmbtu = real_gas
                 data_source = f"historical:{simulation_datetime}"
                 logger.info(
-                    "Historical mode %s: load=%.0f MW wind_cf=%.3f solar_cf=%.3f zones=%s",
-                    simulation_datetime, system_load_mw, wind_cf, solar_cf,
+                    "Historical mode %s: load=%.0f MW wind_cf=%.3f solar_cf=%.3f gas=%.2f zones=%s",
+                    simulation_datetime, system_load_mw, wind_cf, solar_cf, gas_price_mmbtu,
                     {z: round(v, 0) for z, v in actual_zone_loads.items()}
                 )
             else:

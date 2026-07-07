@@ -155,6 +155,31 @@ def get_default_opf():
     return _run_opf()
 
 
+@app.get("/gas-price")
+def get_gas_price(date: str):
+    """Return Henry Hub spot price for a given date (YYYY-MM-DD), using closest prior trading day."""
+    try:
+        from datetime import date as _date
+        d = _date.fromisoformat(date)
+        import psycopg2, os as _os
+        conn = psycopg2.connect(_os.environ["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT date, price FROM gas_prices
+            WHERE hub = 'henry_hub' AND date <= %s AND price > 0
+            ORDER BY date DESC LIMIT 1
+        """, (d,))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="No gas price data for that date")
+        return {"date": str(row[0]), "hub": "henry_hub", "price": float(row[1])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ---------------------------------------------------------------------------
 # ML model
 # ---------------------------------------------------------------------------

@@ -70,6 +70,7 @@ interface OPFResult {
   model_version: string;
   data_source: string;
   system_load_mw: number;
+  gas_price_mmbtu: number;
   avg_lmp: number; max_lmp: number; min_lmp: number; lmp_spread: number;
   wind_mw: number; solar_mw: number; nuclear_mw: number; gas_mw: number;
   renewable_pct: number;
@@ -128,7 +129,6 @@ export default function PypsaNetwork() {
   const [solarCf,  setSolarCf]  = useState(25);
   const [gasPrice, setGasPrice] = useState(350);
   const [loadMw,   setLoadMw]   = useState(55000);
-  const gasMc = Math.round((gasPrice / 100) * 7500 / 10) / 100; // CC heat rate reference
   const [dirty,    setDirty]    = useState(false);
   const [selectedBus, setSelectedBus] = useState<OPFBus | null>(null);
 
@@ -136,6 +136,32 @@ export default function PypsaNetwork() {
   const [historicalMode, setHistoricalMode] = useState(false);
   const [selectedDate, setSelectedDate] = useState("2024-08-20");
   const [selectedHour, setSelectedHour] = useState(15);
+
+  // Fetch real Henry Hub gas price for selected date (historical mode only)
+  const gasPriceQ = useQuery<{ date: string; price: number; hub: string }>({
+    queryKey: ["pypsa-gas-price", selectedDate],
+    queryFn: () => fetch(`${BASE}/gas-price?date=${selectedDate}`).then(r => r.json()),
+    enabled: historicalMode,
+    staleTime: 5 * 60_000,
+  });
+  const historicalGasPrice = gasPriceQ.data?.price ?? null;
+
+  // Compute Gas Ref MC — use real historical price in historical mode, slider in scenario mode
+  const effectiveGasPrice = historicalMode ? (historicalGasPrice ?? gasPrice / 100) : gasPrice / 100;
+  const gasMc = Math.round(effectiveGasPrice * 7500 / 10) / 100; // CC heat rate 7500 BTU/kWh
+
+  // Auto-run OPF when date or hour changes in historical mode
+  useEffect(() => {
+    if (!historicalMode) return;
+    const t = setTimeout(() => {
+      opfMut.mutate({
+        simulation_datetime: `${selectedDate}T${String(selectedHour).padStart(2, "0")}:00:00`,
+      });
+      setDirty(false);
+    }, 400);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historicalMode, selectedDate, selectedHour]);
 
   // ── Load default OPF (cached on engine startup) ───────────────────────────
   const defaultQ = useQuery<OPFResult>({
@@ -264,7 +290,7 @@ export default function PypsaNetwork() {
           </div>
           {historicalMode && (
             <p className="text-xs text-muted-foreground mt-1">
-              Pulls real hourly load by zone and fuel mix from the ERCOT database (Jan 2024 – Jun 2026) to set OPF conditions.
+              Pulls real hourly load by zone, fuel mix, and Henry Hub gas price from the database (Jan 2024 – Jun 2026). OPF runs automatically when you change the date or hour.
             </p>
           )}
         </CardHeader>
@@ -295,14 +321,20 @@ export default function PypsaNetwork() {
                 </select>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Gas Price</div>
-                <div className="flex items-center gap-2">
-                  <Slider min={200} max={800} step={10} value={[gasPrice]}
-                    onValueChange={([v]) => { setGasPrice(v); setDirty(true); }}
-                    className="w-28" />
-                  <span className="font-mono text-xs text-orange-400 w-16">
-                    ${(gasPrice/100).toFixed(2)}/MMBtu
-                  </span>
+                <div className="text-xs text-muted-foreground mb-1">Henry Hub Gas</div>
+                <div className="flex items-center gap-2 h-7">
+                  {gasPriceQ.isLoading ? (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> fetching…
+                    </span>
+                  ) : historicalGasPrice != null ? (
+                    <span className="font-mono text-sm font-bold text-orange-400">
+                      ${historicalGasPrice.toFixed(2)}/MMBtu
+                      <span className="text-xs text-muted-foreground font-normal ml-1">real FRED</span>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">unavailable</span>
+                  )}
                 </div>
               </div>
               <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground bg-teal-950/50 border border-teal-800/40 rounded px-3 py-1.5">
@@ -363,30 +395,35 @@ export default function PypsaNetwork() {
           )}
 
           <div className="mt-4 flex items-center gap-3">
-            <Button size="sm"
-              variant={dirty ? "default" : "outline"}
-              className={dirty ? "bg-teal-600 hover:bg-teal-700" : ""}
-              disabled={opfMut.isPending}
-              onClick={() => {
-                const params: Record<string, unknown> = {
-                  gas_price_mmbtu: gasPrice / 100,
-                };
-                if (historicalMode) {
-                  params.simulation_datetime = `${selectedDate}T${String(selectedHour).padStart(2,"0")}:00:00`;
-                } else {
-                  params.system_load_mw = loadMw;
-                  params.wind_cf        = windCf  / 100;
-                  params.solar_cf       = solarCf / 100;
-                }
-                opfMut.mutate(params);
-              }}>
-              {opfMut.isPending
-                ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Running OPF…</>
-                : historicalMode ? "Run Historical OPF" : "Run OPF"}
-            </Button>
-            {dirty && (
+            {/* In historical mode the OPF auto-runs on date/hour change; button is a manual refresh */}
+            {!historicalMode && (
+              <Button size="sm"
+                variant={dirty ? "default" : "outline"}
+                className={dirty ? "bg-teal-600 hover:bg-teal-700" : ""}
+                disabled={opfMut.isPending}
+                onClick={() => {
+                  opfMut.mutate({
+                    gas_price_mmbtu: gasPrice / 100,
+                    system_load_mw: loadMw,
+                    wind_cf:        windCf  / 100,
+                    solar_cf:       solarCf / 100,
+                  });
+                  setDirty(false);
+                }}>
+                {opfMut.isPending
+                  ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Running OPF…</>
+                  : "Run OPF"}
+              </Button>
+            )}
+            {historicalMode && opfMut.isPending && (
+              <span className="flex items-center gap-1.5 text-xs text-teal-400">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Running historical OPF…
+              </span>
+            )}
+            {!historicalMode && dirty && (
               <span className="text-xs text-muted-foreground">
-                {historicalMode ? "Click to model real ERCOT conditions for this hour" : "Parameters changed — click Run OPF to update"}
+                Parameters changed — click Run OPF to update
               </span>
             )}
             {result && (
@@ -428,7 +465,7 @@ export default function PypsaNetwork() {
             {[
               { label: "System Load", value: `${(result.system_load_mw/1000).toFixed(1)} GW`, sub: "total demand", color: "text-sky-400" },
               { label: "Avg LMP",    value: `$${result.avg_lmp.toFixed(2)}`,           sub: "/MWh system avg",   color: "text-teal-400" },
-              { label: "Gas Ref MC", value: `$${gasMc.toFixed(2)}`,                    sub: "CC @ current gas",  color: "text-orange-400" },
+              { label: "Gas Ref MC", value: `$${(Math.round((result.gas_price_mmbtu ?? effectiveGasPrice) * 7500 / 10) / 100).toFixed(2)}`, sub: `CC @ $${(result.gas_price_mmbtu ?? effectiveGasPrice).toFixed(2)}/MMBtu`, color: "text-orange-400" },
               { label: "LMP Spread", value: `$${result.lmp_spread.toFixed(2)}`,         sub: "max−min /MWh",     color: result.lmp_spread > 5 ? "text-amber-400" : "text-teal-400" },
               { label: "Renewable",  value: `${result.renewable_pct.toFixed(1)}%`,      sub: "of dispatch",      color: "text-emerald-400" },
               { label: "Total Cost", value: `$${(result.total_cost_per_hour/1000).toFixed(0)}k`, sub: "/hour",   color: "text-amber-400" },
