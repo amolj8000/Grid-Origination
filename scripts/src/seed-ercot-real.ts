@@ -192,13 +192,19 @@ function stddev(a: number[]) {
   return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length);
 }
 
-async function processYear(year: number, map: Map<Key, Agg>) {
+async function processYear(year: number, map: Map<Key, Agg>): Promise<boolean> {
   for (const [type, ids] of [["RTM", RTM_IDS], ["DAM", DAM_IDS]] as const) {
     const url = CDR + ids[year as keyof typeof ids];
     console.log(`  [${year}] Downloading ${type}...`);
     const buf = await downloadBuffer(url);
     console.log(`  [${year}] ${type} zip: ${(buf.length / 1024 / 1024).toFixed(1)} MB → extracting XLSX...`);
-    const xlBuf = extractXlsxFromZip(buf);
+    let xlBuf: Buffer;
+    try {
+      xlBuf = extractXlsxFromZip(buf);
+    } catch {
+      console.log(`  [${year}] ${type} not a valid ZIP — annual file not yet published, skipping year.`);
+      return false;
+    }
     console.log(`  [${year}] ${type} XLSX: ${(xlBuf.length / 1024 / 1024).toFixed(1)} MB → parsing sheets...`);
     const wb = XLSX.read(xlBuf, {
       type: "buffer",
@@ -216,6 +222,7 @@ async function processYear(year: number, map: Map<Key, Agg>) {
     }
     console.log();
   }
+  return true;
 }
 
 function buildRows(map: Map<Key, Agg>): typeof ercotNodalStatsTable.$inferInsert[] {
@@ -298,7 +305,11 @@ async function main() {
   for (const year of [2024, 2025, 2026]) {
     console.log(`\n[Year ${year}]`);
     const yearMap = new Map<Key, Agg>();
-    await processYear(year, yearMap);
+    const ok = await processYear(year, yearMap);
+    if (!ok) {
+      console.log(`[Year ${year}] Skipped — no valid data file available.`);
+      continue;
+    }
     const rows = buildRows(yearMap);
     console.log(`  Aggregated ${rows.length} (node, month) combinations for ${year}`);
     await writeYear(rows, year);
