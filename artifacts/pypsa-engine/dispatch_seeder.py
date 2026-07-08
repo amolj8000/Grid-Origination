@@ -238,12 +238,21 @@ def seed_dispatch_full(start_date: datetime.date | None = None) -> None:
     status["errors"]      = 0
 
     try:
+        import concurrent.futures as _cf
         from gridstatus.ercot_api.ercot_api import ErcotAPI
-        api = ErcotAPI(
-            username            = os.environ.get("ERCOT_USERNAME"),
-            password            = os.environ.get("ERCOT_PASSWORD"),
-            public_subscription_key = os.environ.get("ERCOT_SUBSCRIPTION_KEY"),
-        )
+
+        def _make_api():
+            return ErcotAPI(
+                username            = os.environ.get("ERCOT_USERNAME"),
+                password            = os.environ.get("ERCOT_PASSWORD"),
+                public_subscription_key = os.environ.get("ERCOT_SUBSCRIPTION_KEY"),
+            )
+
+        try:
+            with _cf.ThreadPoolExecutor(max_workers=1) as _ex:
+                api = _ex.submit(_make_api).result(timeout=60)
+        except _cf.TimeoutError:
+            raise RuntimeError("ErcotAPI constructor timed out after 60s — ERCOT OAuth may be blocked in this environment")
 
         db_url = os.environ.get("DATABASE_URL")
         conn   = psycopg2.connect(db_url)

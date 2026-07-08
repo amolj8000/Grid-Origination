@@ -15,6 +15,7 @@
  */
 
 import { db, ercotNodalStatsTable } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import * as https from "node:https";
 import * as zlib from "node:zlib";
 import * as XLSX from "xlsx";
@@ -32,13 +33,13 @@ const DAM_IDS: Record<number, string> = {
   2026: "1238506057",
 };
 
-function downloadBuffer(url: string, redirects = 0): Promise<Buffer> {
+function downloadBufferOnce(url: string, redirects = 0): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error("Too many redirects"));
     let settled = false;
     https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res): void => {
       if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
-        void downloadBuffer(res.headers.location, redirects + 1).then(resolve).catch(reject);
+        void downloadBufferOnce(res.headers.location, redirects + 1).then(resolve).catch(reject);
         return;
       }
       const chunks: Buffer[] = [];
@@ -59,6 +60,24 @@ function downloadBuffer(url: string, redirects = 0): Promise<Buffer> {
       reject(err);
     });
   });
+}
+
+async function downloadBuffer(url: string, maxRetries = 3): Promise<Buffer> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await downloadBufferOnce(url);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (attempt < maxRetries && (code === "EPIPE" || code === "ECONNRESET" || code === "ETIMEDOUT")) {
+        const delay = attempt * 5000;
+        console.log(`  [retry ${attempt}/${maxRetries}] ${code} — waiting ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error("unreachable");
 }
 
 function extractXlsxFromZip(buf: Buffer): Buffer {
@@ -181,7 +200,14 @@ async function processYear(year: number, map: Map<Key, Agg>) {
     console.log(`  [${year}] ${type} zip: ${(buf.length / 1024 / 1024).toFixed(1)} MB → extracting XLSX...`);
     const xlBuf = extractXlsxFromZip(buf);
     console.log(`  [${year}] ${type} XLSX: ${(xlBuf.length / 1024 / 1024).toFixed(1)} MB → parsing sheets...`);
-    const wb = XLSX.read(xlBuf, { type: "buffer" });
+    const wb = XLSX.read(xlBuf, {
+      type: "buffer",
+      cellDates: false,
+      cellFormula: false,
+      cellNF: false,
+      cellStyles: false,
+      sheetStubs: false,
+    });
     for (const sn of wb.SheetNames) {
       if (!MONTHS.includes(sn)) continue;
       if (type === "RTM") parseRtmSheet(wb.Sheets[sn], map);
@@ -192,19 +218,7 @@ async function processYear(year: number, map: Map<Key, Agg>) {
   }
 }
 
-async function main() {
-  console.log("=== ERCOT Real Price Seed ===");
-  console.log("Source: ERCOT CDR (public, no auth) — Reports 13061 RTM + 13060 DAM");
-  console.log("Coverage: 2024–2026 YTD, all 15 LZ/HB settlement points\n");
-
-  const map = new Map<Key, Agg>();
-  for (const year of [2024, 2025, 2026]) {
-    console.log(`[Year ${year}]`);
-    await processYear(year, map);
-  }
-
-  console.log(`\nAggregated ${map.size} (settlement_point, year, month) combinations`);
-
+function buildRows(map: Map<Key, Agg>): typeof ercotNodalStatsTable.$inferInsert[] {
   const rows: typeof ercotNodalStatsTable.$inferInsert[] = [];
   for (const [k, agg] of map.entries()) {
     const [sp, ys, ms] = k.split("|");
@@ -232,17 +246,65 @@ async function main() {
       sampleCount: allPrices.length,
     });
   }
+  return rows;
+}
 
-  console.log(`\nClearing existing ercot_nodal_stats (all synthetic data)...`);
-  await db.delete(ercotNodalStatsTable);
-
-  console.log(`Inserting ${rows.length} real rows in batches...`);
+async function writeYear(rows: typeof ercotNodalStatsTable.$inferInsert[], year: number) {
+  console.log(`\n[Year ${year}] Clearing ercot_nodal_stats for ${year}...`);
+  await db.execute(sql`DELETE FROM ercot_nodal_stats WHERE year = ${year}`);
+  console.log(`[Year ${year}] Inserting ${rows.length} rows into ercot_nodal_stats...`);
   const BATCH = 200;
   for (let i = 0; i < rows.length; i += BATCH) {
     await db.insert(ercotNodalStatsTable).values(rows.slice(i, i + BATCH));
-    process.stdout.write(`\r  ${Math.min(i + BATCH, rows.length)} / ${rows.length}`);
+    process.stdout.write(`\r  nodal ${Math.min(i + BATCH, rows.length)} / ${rows.length}`);
   }
-  console.log(`\n✓ Inserted ${rows.length} real ERCOT LZ+HB price rows.`);
+  console.log(`\n✓ Inserted ${rows.length} rows into ercot_nodal_stats for ${year}.`);
+
+  console.log(`[Year ${year}] Upserting ${rows.length} rows into ercot_node_stats...`);
+  let nodeUpserted = 0;
+  for (const row of rows) {
+    const nodeType = (row.settlementPoint as string).startsWith("HB_") ? "hub" : "load_zone";
+    await db.execute(sql`
+      INSERT INTO ercot_node_stats
+        (node, node_type, year, month, avg_da_price, avg_rt_price, volatility,
+         neg_price_percent, on_peak_avg, off_peak_avg, min_price, max_price)
+      VALUES (
+        ${row.settlementPoint}, ${nodeType}, ${row.year}, ${row.month},
+        ${row.avgDaPrice}, ${row.avgRtPrice ?? null}, ${row.stdDev ?? null},
+        ${row.negPricePercent ?? null}, ${row.onPeakAvg ?? null}, ${row.offPeakAvg ?? null},
+        ${row.minPrice ?? null}, ${row.maxPrice ?? null}
+      )
+      ON CONFLICT (node, year, month) DO UPDATE SET
+        avg_da_price      = EXCLUDED.avg_da_price,
+        avg_rt_price      = EXCLUDED.avg_rt_price,
+        volatility        = EXCLUDED.volatility,
+        neg_price_percent = EXCLUDED.neg_price_percent,
+        on_peak_avg       = EXCLUDED.on_peak_avg,
+        off_peak_avg      = EXCLUDED.off_peak_avg,
+        min_price         = EXCLUDED.min_price,
+        max_price         = EXCLUDED.max_price
+    `);
+    nodeUpserted++;
+    if (nodeUpserted % 50 === 0) process.stdout.write(`\r  node ${nodeUpserted} / ${rows.length}`);
+  }
+  console.log(`\n✓ Upserted ${nodeUpserted} rows into ercot_node_stats for ${year}.`);
+}
+
+async function main() {
+  console.log("=== ERCOT Real Price Seed ===");
+  console.log("Source: ERCOT CDR (public, no auth) — Reports 13061 RTM + 13060 DAM");
+  console.log("Coverage: 2024–2026 YTD, all 15 LZ/HB settlement points\n");
+
+  for (const year of [2024, 2025, 2026]) {
+    console.log(`\n[Year ${year}]`);
+    const yearMap = new Map<Key, Agg>();
+    await processYear(year, yearMap);
+    const rows = buildRows(yearMap);
+    console.log(`  Aggregated ${rows.length} (node, month) combinations for ${year}`);
+    await writeYear(rows, year);
+  }
+
+  console.log("\n=== Done. All years seeded. ===");
   process.exit(0);
 }
 

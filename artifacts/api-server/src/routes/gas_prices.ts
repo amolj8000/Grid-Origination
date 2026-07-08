@@ -50,6 +50,7 @@ router.get("/gas-prices/spark-spread", async (req, res) => {
       FROM ercot_node_stats
       WHERE node = ${node}
         AND avg_da_price IS NOT NULL
+        AND year >= 2024
       GROUP BY year, month
       ORDER BY year, month
     `);
@@ -111,7 +112,7 @@ router.get("/gas-prices/implied-heat-rate", async (req, res) => {
     }>(sql`
       SELECT year, month, AVG(avg_da_price)::float8 AS avg_da
       FROM ercot_node_stats
-      WHERE node = ${node} AND avg_da_price IS NOT NULL
+      WHERE node = ${node} AND avg_da_price IS NOT NULL AND year >= 2024
       GROUP BY year, month ORDER BY year, month
     `);
 
