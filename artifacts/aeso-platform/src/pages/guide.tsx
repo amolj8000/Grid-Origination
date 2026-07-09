@@ -1,0 +1,333 @@
+import { Link } from "wouter";
+import {
+  LayoutDashboard, DollarSign, Factory, Scale, AlertTriangle,
+  CalendarDays, ListOrdered, Route, BrainCircuit, TrendingUp,
+  Workflow, Eye, BookOpen, CheckCircle2, Clock, AlertCircle,
+  ArrowRight, Database,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+const C = {
+  teal: "#14b8a6",
+  amber: "#f59e0b",
+  purple: "#8b5cf6",
+  blue: "#3b82f6",
+  green: "#22c55e",
+};
+
+interface GuideItem {
+  title: string;
+  href: string;
+  icon: any;
+  color: string;
+  status: "live";
+  summary: string;
+  dataSource: string;
+}
+
+interface GuideGroup {
+  group: string;
+  items: GuideItem[];
+}
+
+const GROUPS: GuideGroup[] = [
+  {
+    group: "Market Overview",
+    items: [
+      {
+        title: "Dashboard",
+        href: "/",
+        icon: LayoutDashboard,
+        color: C.teal,
+        status: "live",
+        summary:
+          "Landing page with live stat cards — latest pool price, today's AIL, generation mix snapshot, and active queue project count. Gives a one-glance read on current Alberta market conditions before drilling into any specific tab.",
+        dataSource: "aeso_pool_price, aeso_supply_demand, aeso_generation_mix, aeso_queue_projects (latest hour)",
+      },
+      {
+        title: "Pool Price",
+        href: "/pool-price",
+        icon: DollarSign,
+        color: C.teal,
+        status: "live",
+        summary:
+          "Hourly Alberta pool price history — last 7 days hourly chart plus monthly statistics (avg, min, max, spike count). Pool price is Alberta's single system-wide clearing price (energy-only market, no nodal LMPs yet), capped at $999.99/MWh with negative prices possible off-peak during high wind output.",
+        dataSource: "aeso_pool_price — ~21k hourly rows, Jan 2024–May 2026, real from AESO Pool Price API",
+      },
+      {
+        title: "Generation Mix",
+        href: "/generation",
+        icon: Factory,
+        color: C.amber,
+        status: "live",
+        summary:
+          "Fuel-type breakdown of Alberta generation over the last 7 days plus monthly generation statistics. Alberta has zero coal generation (phased out in 2023) — mix is roughly gas ~60%, wind ~30%, solar ~5%, hydro ~5%.",
+        dataSource: "aeso_generation_mix — hourly rows by fuel type, Jan 2024–May 2026",
+      },
+      {
+        title: "Supply & Demand",
+        href: "/supply-demand",
+        icon: Scale,
+        color: C.blue,
+        status: "live",
+        summary:
+          "Interchange flows on BC/SK sonic ties, plus generation broken down by ownership group (Merchant/MC, Transmission-Connected/TNG, Distribution-Connected/DCR). Expand any group to see individual asset-level output.",
+        dataSource: "aeso_supply_demand — hourly AIL, reserve margin, and interchange, Jan 2024–May 2026",
+      },
+    ],
+  },
+  {
+    group: "Reliability & Capacity",
+    items: [
+      {
+        title: "Outages",
+        href: "/outages",
+        icon: AlertTriangle,
+        color: C.amber,
+        status: "live",
+        summary:
+          "Generation outage report — planned and forced outages by asset, with approved outage MW and outage type. Useful for spotting supply-side risk ahead of high-demand periods.",
+        dataSource: "aeso_outages — real outage records, Jan 2024–May 2026",
+      },
+      {
+        title: "7-Day Capacity",
+        href: "/7day-capacity",
+        icon: CalendarDays,
+        color: C.blue,
+        status: "live",
+        summary:
+          "Hourly available generation capability for the next 7 days — AESO's forward-looking adequacy signal. Compares available capability against forecast AIL to flag tight reserve-margin hours before they happen.",
+        dataSource: "aeso_7day_capability — hourly forward capability, real from AESO API",
+      },
+      {
+        title: "LTA Metrics",
+        href: "/lta",
+        icon: TrendingUp,
+        color: C.teal,
+        status: "live",
+        summary:
+          "Long-Term Adequacy Metrics — AESO's quarterly reliability outlook. Shows Total Energy Not Served (TENS) probability, worst-case shortfall probability, hours-in-shortfall estimates, and the project pipeline by development stage (Site Assessment/Application/Approved) split by fuel type.",
+        dataSource: "Parsed from AESO's published quarterly LTA Report PDFs (pdfplumber extraction)",
+      },
+    ],
+  },
+  {
+    group: "Interconnection & Congestion",
+    items: [
+      {
+        title: "Interconnection Queue",
+        href: "/queue",
+        icon: ListOrdered,
+        color: C.purple,
+        status: "live",
+        summary:
+          "Alberta generation interconnection queue tracker — project name, fuel type, capacity, connection point, and queue stage. Mirrors the Grid Origination Platform's queue tab but for the Alberta market specifically.",
+        dataSource: "aeso_queue_projects — queue records from AESO connection project list",
+      },
+      {
+        title: "Congestion & Nodal Analysis",
+        href: "/congestion",
+        icon: Route,
+        color: C.purple,
+        status: "live",
+        summary:
+          "A 3-zone (South/Central/North) DC OPF model of the Alberta grid, built in PyPSA, showing where locational price separation would emerge under the future Restructured Energy Market (REM). At high wind output the South→Central export corridor congests, dropping the South zone's shadow price toward $0 while Central holds near $31.50/MWh. Also shows historical SMP vs. pool price spread as a proxy for congestion rent today, since Alberta doesn't yet have live nodal LMPs.",
+        dataSource: "PyPSA 3-node OPF (/pypsa/aeso/*) calibrated to real AESO zone capacity + aeso_smp historical spread",
+      },
+    ],
+  },
+  {
+    group: "Market Transition & Regulatory",
+    items: [
+      {
+        title: "REM (Restructured Energy Market)",
+        href: "/rem",
+        icon: Workflow,
+        color: C.teal,
+        status: "live",
+        summary:
+          "Timeline and explainer for Alberta's transition from an energy-only market to a Restructured Energy Market with locational marginal pricing, expected mid-2027. Covers pre-REM studies, stakeholder engagement, final design publication, and ISO Rules approval milestones, plus links to AESO's REM design documents.",
+        dataSource: "AESO public REM pages (aeso.ca/transition/rem, aesoengage.aeso.ca) — reference content, last verified July 2026",
+      },
+      {
+        title: "AUC (Alberta Utilities Commission)",
+        href: "/auc",
+        icon: Scale,
+        color: C.amber,
+        status: "live",
+        summary:
+          "Reference hub for Alberta's utility regulator — key AUC Rules (Rules of Practice, Power Plant Applications, Compliance, Rate of Return, Micro-Generation, etc.), governing Acts & Regulations, and a live RSS feed of recent AUC filings/decisions.",
+        dataSource: "AUC Rules/Acts: curated reference data. Filings feed: live RSS from auc.ab.ca",
+      },
+      {
+        title: "MSA (Market Surveillance Administrator)",
+        href: "/msa",
+        icon: Eye,
+        color: C.blue,
+        status: "live",
+        summary:
+          "Alberta's independent market monitor — browse MSA document categories (Quarterly Reports, Annual Report to the Minister, Compliance Reviews, MSOC, ISO Rules penalties, Retail Statistics) and available Data Portal datasets (Market Power Data: Pivotality, Lerner Index, SRMC, Counterfactual Price).",
+        dataSource: "Live document listing scraped from AESO MSA site, categorized by type",
+      },
+    ],
+  },
+  {
+    group: "Assistance",
+    items: [
+      {
+        title: "Market Copilot",
+        href: "/qa",
+        icon: BrainCircuit,
+        color: C.green,
+        status: "live",
+        summary:
+          "GPT-4o-powered chat interface for natural-language questions about Alberta market data — e.g. \"What was the average pool price in January 2026?\" or \"Show me generation outages this month.\" Has direct DB query tools scoped to the AESO tables.",
+        dataSource: "GPT-4o with SQL tool access to all aeso_* tables",
+      },
+    ],
+  },
+];
+
+export default function Guide() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <BookOpen className="h-6 w-6 text-teal-400" />
+          Platform Guide
+        </h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          What every tab does, where its data comes from, and how it fits together — Alberta's energy-only
+          market today and its transition to a nodal Restructured Energy Market.
+        </p>
+      </div>
+
+      <Card className="border-border">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">About this platform</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            This is a standalone analytics platform for the Alberta Electric System Operator (AESO)
+            market — Canada's only competitive energy-only wholesale electricity market. It tracks
+            pool price, generation mix, supply/demand, outages, forward capability, the interconnection
+            queue, and reliability adequacy metrics, all from real AESO public data sources.
+          </p>
+          <p>
+            A second focus is Alberta's market transition: AESO is moving from a single system-wide
+            pool price to a Restructured Energy Market (REM) with locational marginal pricing, expected
+            mid-2027. The Congestion &amp; Nodal Analysis and REM tabs model and explain that transition.
+          </p>
+        </CardContent>
+      </Card>
+
+      {GROUPS.map((group) => (
+        <div key={group.group} className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            {group.group}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {group.items.map((item) => (
+              <Card key={item.href} className="border-border">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <item.icon className="h-4 w-4" style={{ color: item.color }} />
+                      {item.title}
+                    </CardTitle>
+                    <Badge variant="outline" className="text-[10px] border-green-500/50 text-green-400">
+                      Live
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-xs text-muted-foreground leading-relaxed">{item.summary}</p>
+                  <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground/80">
+                    <Database className="h-3 w-3 mt-0.5 shrink-0" />
+                    <span>{item.dataSource}</span>
+                  </div>
+                  <Link
+                    href={item.href}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-teal-400 hover:text-teal-300 pt-1"
+                  >
+                    Open tab <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <Card className="border-border">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Data Status</CardTitle>
+          <CardDescription className="text-xs">What's real, what's modelled, what's planned</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+            {[
+              {
+                label: "Pool Price / Generation / Supply-Demand",
+                status: "real",
+                detail: "~21k hourly rows each, Jan 2024–May 2026. Real from AESO Pool Price, AIES Gen Capacity, and Current Supply/Demand APIs.",
+              },
+              {
+                label: "Outages / Queue / 7-Day Capability",
+                status: "real",
+                detail: "Real records from AESO's outage report, connection project list, and forward capability APIs.",
+              },
+              {
+                label: "LTA Metrics",
+                status: "real",
+                detail: "Parsed directly from AESO's published quarterly LTA Report PDFs — TENS probability, shortfall hours, project pipeline by stage.",
+              },
+              {
+                label: "3-Zone Alberta OPF",
+                status: "real",
+                detail: "PyPSA DC OPF calibrated to real AESO zone-level generation capacity (South/Central/North). Locational pricing itself is a REM preview model, not live — Alberta has no nodal LMPs yet.",
+              },
+              {
+                label: "REM Timeline",
+                status: "real",
+                detail: "Milestones and design details sourced from AESO's public REM transition pages, last verified July 2026.",
+              },
+              {
+                label: "AUC Rules & Filings",
+                status: "real",
+                detail: "Rule/Act reference list curated from auc.ab.ca. Filings feed is live RSS from the AUC site.",
+              },
+              {
+                label: "MSA Documents",
+                status: "real",
+                detail: "Live document listing scraped from AESO's MSA site by category.",
+              },
+              {
+                label: "Market Copilot",
+                status: "real",
+                detail: "GPT-4o with direct SQL tool access scoped to AESO tables.",
+              },
+            ].map((item) => (
+              <div key={item.label} className="flex gap-2 p-2.5 rounded-md bg-card border border-border">
+                <div className="shrink-0 mt-0.5">
+                  {item.status === "real" ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+                  ) : item.status === "partial" ? (
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+                  ) : (
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-semibold text-foreground">{item.label}</div>
+                  <div className="text-muted-foreground mt-0.5">{item.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

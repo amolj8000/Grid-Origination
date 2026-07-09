@@ -7,7 +7,7 @@ import {
   Brain, Flame, MapPin, FlaskConical, BookMarked, Leaf,
   BookOpen, Thermometer, Car, Server, Globe, Calculator,
   FileText, TrendingDown, Fuel, Battery, Gauge, Wind, Sun,
-  Search,
+  Search, ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -99,10 +99,9 @@ const TABS = [
         color: C.teal,
         status: "live",
         summary:
-          "Sorted project ranking table with all 10 dimension scores: congestion risk, curtailment risk, basis risk, tax credit eligibility, sponsor quality, contract structure, market type, capacity available, delivery profile, and confidence score.",
-        dataSource: "Candidates DB (3,875 EIA 860 plants scored on all 10 dimensions)",
+          "Sorted project ranking table across 10 real scoring dimensions: Curtailment, Congestion, Basis Risk, Capture Price, Capacity, Mkt Revenue, Interconnect Risk, and RECs/Yr are shown as sortable columns here; Grid Stability (generation/load timing shape risk) and Tax Credit (ITC/PTC eligibility) feed the PPA Calculator's risk breakdown. Six selectable investment objectives (Risk-Adjusted, Lowest LCOE, Corporate Hedge, Decarbonization, Capacity Value, Merchant Upside) re-weight the composite score.",
+        dataSource: "Candidates DB (3,875 EIA 860 plants) — all 10 dimensions driven by real ERCOT/CAISO/PJM nodal, queue, and REC-market data",
         useCases: ["origination"],
-        roadmap: "Auto-score candidates from EIA 860 using real nodal + queue data signals",
       },
       {
         title: "Export Center",
@@ -459,6 +458,17 @@ const TABS = [
         dataSource: "55 curated datacenter records from public announcements (Microsoft, Meta, Google, Oracle, Amazon, etc.)",
         useCases: ["siting"],
       },
+      {
+        title: "Load Forecast Stress Test",
+        href: "/load-forecast-stress",
+        icon: ShieldAlert,
+        color: C.blue,
+        status: "live",
+        summary:
+          "Stress-tests each ERCOT hub (Houston/North/West/South) against its 3-year load forecast by calling the PyPSA scarcity endpoint at the projected peak load. Shows nodal LMPs, reserve margin, load-shed risk, and a scarcity level (NORMAL/ELEVATED/SEVERE/CRITICAL) driven by real EIA-860 installed capacity vs. forecast demand growth (EV + datacenter increments included).",
+        dataSource: "load_forecasts (8,768 rows) aggregated to 4 hubs + PyPSA /pypsa/scarcity OPF against real EIA-860 capacity",
+        useCases: ["siting"],
+      },
     ],
   },
   {
@@ -781,6 +791,11 @@ export default function PlatformGuide() {
                 label: "CAISO Hourly Prices",
                 status: "real",
                 detail: "63,495 rows. Real OASIS PRC_LMP (DAM) + PRC_HASP_LMP (HASP). NP15/SP15/ZP26 × 29 months.",
+              },
+              {
+                label: "Load Forecast Stress Test",
+                status: "real",
+                detail: "PyPSA scarcity OPF run live against 3yr forecast peak load per ERCOT hub, using real EIA-860 installed capacity.",
               },
             ].map(item => (
               <div key={item.label} className="flex gap-2 p-2.5 rounded-md bg-card border border-border">

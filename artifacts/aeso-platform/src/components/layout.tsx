@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Workflow,
   Eye,
+  BookOpen,
 } from "lucide-react";
 
 const navItems = [
@@ -29,6 +30,7 @@ const navItems = [
   { href: "/auc", label: "AUC", icon: Scale },
   { href: "/msa", label: "MSA", icon: Eye },
   { href: "/qa", label: "Market Copilot", icon: BrainCircuit },
+  { href: "/guide", label: "Platform Guide", icon: BookOpen },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
