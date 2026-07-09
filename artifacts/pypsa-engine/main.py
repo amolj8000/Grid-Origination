@@ -13,6 +13,7 @@ Endpoints (ERCOT):
   POST /pypsa/tx-relief          — transmission line upgrade before/after comparison
   POST /pypsa/scarcity           — thermal derate + load shedding scarcity scenario
   POST /pypsa/battery            — 24-hr multi-period OPF with battery StorageUnit
+  POST /pypsa/expansion          — multi-year capacity expansion (multi-investment-period LP)
 
 Endpoints (Alberta / AESO):
   GET  /pypsa/aeso/topology      — 3-node Alberta network topology for map
@@ -405,6 +406,34 @@ def battery(req: BatteryRequest):
         return result
     except Exception as e:
         logger.error("Battery sim failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Multi-Year Capacity Expansion Optimizer
+# ---------------------------------------------------------------------------
+class ExpansionRequest(BaseModel):
+    periods: list[int]       = [2026, 2028, 2030, 2032]
+    demand_scenario: str     = "moderate"   # "moderate" | "aggressive"
+    gas_price_mmbtu: float   = 3.50
+
+
+@app.post("/expansion")
+def expansion(req: ExpansionRequest):
+    from expansion import run_capacity_expansion
+    try:
+        result = run_capacity_expansion(
+            periods=req.periods,
+            demand_scenario=req.demand_scenario,
+            gas_price_mmbtu=req.gas_price_mmbtu,
+        )
+        if "error" in result:
+            raise HTTPException(status_code=422, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Capacity expansion failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

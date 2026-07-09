@@ -76,6 +76,7 @@ const sidebarEntries: NavEntry[] = [
         { title: "TX Relief Sim",   href: "/pypsa-tx-relief",   icon: GitBranch },
         { title: "Scarcity Sim",    href: "/pypsa-scarcity",    icon: Flame },
         { title: "Battery Revenue", href: "/pypsa-battery",     icon: Battery },
+        { title: "Capacity Expansion", href: "/pypsa-expansion", icon: Layers },
       ],
     },
   },

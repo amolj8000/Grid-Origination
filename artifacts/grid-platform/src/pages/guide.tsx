@@ -361,6 +361,17 @@ const TABS = [
         dataSource: "PyPSA 340-bus ERCOT network; synthetic storage parameters",
         useCases: ["origination", "siting"],
       },
+      {
+        title: "Capacity Expansion",
+        href: "/pypsa-expansion",
+        icon: Layers,
+        color: C.indigo,
+        status: "live",
+        summary:
+          "Genuine multi-year capacity expansion optimizer — solves a single PyPSA multi-investment-period LP jointly across 2026/2028/2030/2032 (not four separate snapshots) using `n.optimize(multi_investment_periods=True)`. Each period is represented by 4 seasonal 24-hour dispatch days. New wind/solar/storage/gas builds at candidate sites are co-optimized against dispatch cost, subject to an ERCOT-style accredited-capacity reserve margin constraint (wind 15%, solar 80%, firm 95%, storage 80% capacity credit) enforced via a custom linopy `extra_functionality` constraint, and a $9,000/MWh VOLL scarcity backstop. Two demand scenarios: Moderate (real `load_forecasts` regression, +1.63%/yr) and Aggressive (ERCOT's own April 2026 Long-Term Load Forecast filing, +17.6%/yr, driven by data-center interconnection requests). Capital costs are NREL ATB 2024 anchors annualized via WACC-based capital recovery factor; the objective discounts each period as the sum of its individual years' discount factors (not a single per-period factor), so the reported total discounted system cost reflects the true horizon cost. Unserved energy served by the VOLL backstop is tracked and surfaced explicitly (MWh and % of load per period) rather than hidden from the dispatch mix — the Aggressive scenario shows real, non-trivial shortfall by 2032, which is what drives its LMP spike. Returns period-by-period new builds, cumulative mix, annualized capex, dispatch, unserved energy, and average LMP.",
+        dataSource: "NREL ATB 2024 costs; load_forecasts (real EIA-930-anchored regression) and ERCOT LTLF filing growth rate; PyPSA 5-bus network; HiGHS MILP solver",
+        useCases: ["siting"],
+      },
     ],
   },
   {

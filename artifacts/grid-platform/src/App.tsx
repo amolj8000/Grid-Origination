@@ -32,6 +32,7 @@ import PypsaCurtailment from "@/pages/pypsa-curtailment";
 import PypsaTxRelief from "@/pages/pypsa-tx-relief";
 import PypsaScarcity from "@/pages/pypsa-scarcity";
 import PypsaBattery from "@/pages/pypsa-battery";
+import PypsaExpansion from "@/pages/pypsa-expansion";
 import CaisoHourly from "@/pages/caiso-hourly";
 import WeatherPage from "@/pages/weather";
 import PpaCalculator from "@/pages/ppa-calculator";
@@ -78,6 +79,7 @@ function Router() {
         <Route path="/pypsa-tx-relief" component={PypsaTxRelief} />
         <Route path="/pypsa-scarcity" component={PypsaScarcity} />
         <Route path="/pypsa-battery" component={PypsaBattery} />
+        <Route path="/pypsa-expansion" component={PypsaExpansion} />
         <Route path="/caiso-hourly" component={CaisoHourly} />
         <Route path="/weather" component={WeatherPage} />
         <Route path="/ppa" component={PpaCalculator} />
