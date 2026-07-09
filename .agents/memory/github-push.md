@@ -4,7 +4,13 @@ description: How to push/update external GitHub repos when local git init/commit
 ---
 
 ## Account
-GitHub username is `amol-javahire` (changed from `amolj8000` as of 2026-07-09). Old repo URLs like `github.com/amolj8000/<repo>` still redirect, but use the new username going forward for API calls (owner field) and git remote URLs. Known repos: `Grid-Origination` (grid-platform/monorepo), `modelling-aeso-congestion` (AESO standalone snapshot).
+GitHub username is `amol-javahire` (changed from `amolj8000` as of 2026-07-09). Old repo URLs like `github.com/amolj8000/<repo>` still redirect, but use the new username going forward for API calls (owner field) and git remote URLs.
+
+Known repos (also renamed as of 2026-07-09, old names redirect but use new ones going forward):
+- `Grid-Intelligence` (was `Grid-Origination`) — grid-platform/monorepo
+- `AESO-Intelligence` (was `modelling-aeso-congestion`) — AESO standalone snapshot
+
+Verify via `GET /repos/{owner}/{repo}` (expect 200) before pushing if there's any doubt about current name/ownership.
 
 ## Constraint
 `git init`, `git commit`, and `git push --force` are blocked for the main agent by the sandbox's destructive-git-command guard — this applies globally, not just inside the project repo (e.g. a fresh scratch dir under `/tmp` is blocked too).
