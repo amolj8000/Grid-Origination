@@ -138,12 +138,41 @@ def _precompute_ercot_opf():
         logger.warning("Startup OPF failed (non-fatal): %s", e)
 
 
+def _autostart_dispatch_seeder() -> None:
+    """Auto-resume dispatch seeding on startup if gap days remain. Gap-fill safe."""
+    import datetime as _dt
+    global _dispatch_seeding
+    try:
+        import psycopg2 as _pg2
+        conn = _pg2.connect(os.environ["DATABASE_URL"])
+        cur = conn.cursor()
+        end_date = _dt.date.today() - _dt.timedelta(days=60)
+        start_date = _dt.date(2024, 1, 1)
+        cur.execute("SELECT COUNT(*) FROM ercot_dispatch_seed_log")
+        seeded = cur.fetchone()[0]
+        expected = (end_date - start_date).days + 1
+        conn.close()
+        if seeded >= expected:
+            logger.info("Dispatch seeder: all %d days already seeded — skipping auto-start", seeded)
+            return
+        logger.info("Dispatch seeder auto-start: %d/%d days seeded — resuming gap-fill", seeded, expected)
+        from dispatch_seeder import dispatch_seed_status, seed_dispatch_full
+        _dispatch_seeding = True
+        try:
+            seed_dispatch_full(start_date=None)
+        finally:
+            _dispatch_seeding = False
+    except Exception as e:
+        logger.warning("Dispatch seeder auto-start failed (non-fatal): %s", e)
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Kick off ERCOT OPF pre-computation in the background so the port binds immediately."""
+    """Kick off ERCOT OPF pre-computation and dispatch gap-fill in the background."""
     import asyncio
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _precompute_ercot_opf)
+    loop.run_in_executor(None, _autostart_dispatch_seeder)
 
 
 @app.get("/opf/default")
