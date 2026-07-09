@@ -305,7 +305,10 @@ GENERATORS: list[dict] = [
 ]
 
 
-def _build_tier1(system_load_mw, wind_cf, solar_cf, gas_price):
+def _build_tier1(
+    system_load_mw, wind_cf, solar_cf, gas_price,
+    gas_derate_pct: float = 0.0, nuclear_derate_pct: float = 0.0, voll: float | None = None,
+):
     n = pypsa.Network()
     n.set_snapshots(pd.DatetimeIndex(["2025-07-15 15:00"]))
     for bus_id, meta in _T1_BUSES.items():
@@ -318,11 +321,16 @@ def _build_tier1(system_load_mw, wind_cf, solar_cf, gas_price):
     for (bus, carrier, total_mw, _) in _T1_FLEET:
         mc = _marginal_cost(carrier, gas_price)
         cf = wind_cf if carrier == "wind" else (solar_cf if carrier == "solar" else MAX_CF.get(carrier, 1.0))
+        if carrier in ("gas_cc", "gas_ct"):
+            cf *= (1 - gas_derate_pct / 100)
+        elif carrier == "nuclear":
+            cf *= (1 - nuclear_derate_pct / 100)
         n.add("Generator", f"{bus[:3]}-{carrier}", bus=bus, carrier=carrier,
-              p_nom=float(total_mw), marginal_cost=mc, p_max_pu=cf, p_min_pu=0.0)
+              p_nom=float(total_mw), marginal_cost=mc, p_max_pu=max(0.0, cf), p_min_pu=0.0)
+    peaker_mc = voll if voll is not None else 499.0
     for bus_id, p_nom in _T1_PEAKER.items():
         n.add("Generator", f"{bus_id[:3]}-peaker", bus=bus_id, carrier="peaker",
-              p_nom=float(p_nom), marginal_cost=499.0, p_max_pu=1.0, p_min_pu=0.0)
+              p_nom=float(p_nom), marginal_cost=peaker_mc, p_max_pu=1.0, p_min_pu=0.0)
     return n
 
 
@@ -338,6 +346,9 @@ def _build_tier2(
     gas_price: float,
     zone_loads: dict[str, float] | None = None,
     shift_factors: dict[str, dict] | None = None,
+    gas_derate_pct: float = 0.0,
+    nuclear_derate_pct: float = 0.0,
+    voll: float | None = None,
 ) -> pypsa.Network:
     """Build a PyPSA network from real 340-bus topology + EIA 860 generators.
 
@@ -382,8 +393,12 @@ def _build_tier2(
             continue
         mc = _marginal_cost(carrier, gas_price)
         cf = wind_cf if carrier == "wind" else (solar_cf if carrier == "solar" else MAX_CF.get(carrier, 1.0))
+        if carrier in ("gas_cc", "gas_ct"):
+            cf *= (1 - gas_derate_pct / 100)
+        elif carrier == "nuclear":
+            cf *= (1 - nuclear_derate_pct / 100)
         n.add("Generator", f"{bus}-{carrier}", bus=bus, carrier=carrier,
-              p_nom=mw, marginal_cost=mc, p_max_pu=cf, p_min_pu=0.0)
+              p_nom=mw, marginal_cost=mc, p_max_pu=max(0.0, cf), p_min_pu=0.0)
 
     # ── Assign bus loads ───────────────────────────────────────────────────────
     bus_cap: dict[str, float] = {}
@@ -459,10 +474,13 @@ def _build_tier2(
         if zone and (zone not in zone_top_bus or cap > zone_top_bus[zone][1]):
             zone_top_bus[zone] = (bus, cap)
 
+    peaker_mc = voll if voll is not None else 499.0
+    lsr_mc = (voll * 2) if voll is not None else 999.0
+
     for zone, (bus, _) in zone_top_bus.items():
         pnom = max(PEAKER_ZONES.get(zone, 5000), system_load_mw * 0.30)
         n.add("Generator", f"{bus}-peaker", bus=bus, carrier="peaker",
-              p_nom=float(pnom), marginal_cost=499.0, p_max_pu=1.0, p_min_pu=0.0)
+              p_nom=float(pnom), marginal_cost=peaker_mc, p_max_pu=1.0, p_min_pu=0.0)
 
     # ── Per-bus last-resort generators (guarantee LP feasibility at any load) ─
     # At high system loads (≥70 GW) or whenever zone peakers can't reach every
@@ -476,7 +494,7 @@ def _build_tier2(
         gen_name  = f"{bus_name}-lsr"
         if gen_name not in n.generators.index:
             n.add("Generator", gen_name, bus=bus_name, carrier="peaker",
-                  p_nom=load_set * 1.3, marginal_cost=999.0,
+                  p_nom=load_set * 1.3, marginal_cost=lsr_mc,
                   p_max_pu=1.0, p_min_pu=0.0)
 
     return n
@@ -490,11 +508,17 @@ def build_network(
     solar_cf: float = 0.22,
     gas_price_mmbtu: float = 3.50,
     zone_loads: dict[str, float] | None = None,
+    gas_derate_pct: float = 0.0,
+    nuclear_derate_pct: float = 0.0,
+    voll: float | None = None,
 ) -> pypsa.Network:
     buses, lines = _load_topology_from_db()
     if not buses:
         logger.info("Using Tier 1 (5-bus fallback)")
-        return _build_tier1(system_load_mw, wind_cf, solar_cf, gas_price_mmbtu)
+        return _build_tier1(
+            system_load_mw, wind_cf, solar_cf, gas_price_mmbtu,
+            gas_derate_pct=gas_derate_pct, nuclear_derate_pct=nuclear_derate_pct, voll=voll,
+        )
     generators = _load_eia860_generators()
     shift_factors = _load_shift_factors_from_db()
     logger.info(
@@ -506,7 +530,59 @@ def build_network(
         system_load_mw, wind_cf, solar_cf, gas_price_mmbtu,
         zone_loads=zone_loads,
         shift_factors=shift_factors or None,
+        gas_derate_pct=gas_derate_pct, nuclear_derate_pct=nuclear_derate_pct, voll=voll,
     )
+
+
+# ── Bus → hub aggregation (used by scarcity to roll 340 buses into 5 hubs) ────
+
+_LZ_TO_HUB: dict[str, str] = {
+    "LZ_HOUSTON": "HOUSTON",
+    "LZ_NORTH":   "NORTH",
+    "LZ_WEST":    "WEST",
+    "LZ_SOUTH":   "SOUTH",
+    "LZ_AEN":     "SOUTH",
+    "LZ_CPS":     "SOUTH",
+    "LZ_LCRA":    "SOUTH",
+}
+
+
+def bus_hub_map(buses: list[dict]) -> dict[str, str]:
+    """Map every Tier-2 bus to one of the 5 ERCOT hub labels (HOUSTON/NORTH/
+    WEST/SOUTH/PAN), using in priority order:
+      1. The bus's own `hub` column (only ~88/340 buses have this set).
+      2. Its ERCOT load-zone (`zone`), mapped via _LZ_TO_HUB.
+      3. Nearest hub-labeled bus by haversine distance (last resort).
+    """
+    result: dict[str, str] = {}
+    hub_labeled: list[tuple[float, float, str]] = []
+
+    for b in buses:
+        hub = b.get("hub")
+        if hub:
+            label = hub.replace("HB_", "")
+            result[b["name"]] = label
+            hub_labeled.append((b["lat"], b["lon"], label))
+
+    for b in buses:
+        name = b["name"]
+        if name in result:
+            continue
+        zone = b.get("zone")
+        if zone in _LZ_TO_HUB:
+            result[name] = _LZ_TO_HUB[zone]
+            continue
+        if hub_labeled:
+            best_label, best_d = "SOUTH", 1e9
+            for hlat, hlon, label in hub_labeled:
+                d = _haversine(b["lat"], b["lon"], hlat, hlon)
+                if d < best_d:
+                    best_d, best_label = d, label
+            result[name] = best_label
+        else:
+            result[name] = "SOUTH"
+
+    return result
 
 
 def run_opf(

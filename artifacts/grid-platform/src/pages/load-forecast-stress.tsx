@@ -446,7 +446,7 @@ function ErcotPanel(props: {
               {isPending ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Running PyPSA OPF...</> : "Run Stress Test"}
             </Button>
             <span className="text-xs text-muted-foreground">
-              System-wide load implied: <span className="font-mono text-foreground">{(systemLoadMw / 1000).toFixed(1)} GW</span> · Full nodal OPF (ERCOT 5-bus reduced-order model)
+              System-wide load implied: <span className="font-mono text-foreground">{(systemLoadMw / 1000).toFixed(1)} GW</span> · Full nodal OPF (ERCOT 340-bus Tier-2 model)
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-3 border-t border-border pt-3">

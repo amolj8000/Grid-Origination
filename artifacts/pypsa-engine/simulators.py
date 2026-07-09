@@ -15,12 +15,13 @@ import numpy as np
 from typing import Any
 
 from network import (
-    BUSES, LINES, GENERATORS, LOAD_FRACTIONS, HUB_MAP, HIDDEN_CARRIERS, _build_tier1
+    BUSES, LINES, GENERATORS, LOAD_FRACTIONS, HUB_MAP, HIDDEN_CARRIERS, _build_tier1,
+    build_network as _build_network_real, bus_hub_map, _load_topology_from_db,
 )
 
 def build_network(system_load_mw, wind_cf, solar_cf, gas_price_mmbtu):
-    """Always use the 5-bus Tier-1 network for simulators (curtailment, scarcity, tx-relief).
-    Tier-2 (340-bus) is used only by the main OPF page via network.build_network."""
+    """Always use the 5-bus Tier-1 network for curtailment/tx-relief simulators.
+    Scarcity uses the real Tier-2 340-bus model via _build_network_real (see run_scarcity)."""
     return _build_tier1(system_load_mw, wind_cf, solar_cf, gas_price_mmbtu)
 
 
@@ -318,109 +319,111 @@ def run_scarcity(
     voll: float = 5000.0,
 ) -> dict[str, Any]:
     """
-    Simulate a stressed grid with thermal derates and potential load shedding.
-    Peaker generators act as VOLL-priced load-shedding proxy.
+    Simulate a stressed grid with thermal derates and potential load shedding,
+    using the real Tier-2 340-bus ERCOT topology (falls back to the 5-bus
+    Tier-1 model only if the DB has no topology seeded).
+
+    Emergency "peaker" / last-resort generators (priced at `voll`) act as the
+    load-shedding proxy — their dispatch is unserved energy. Results are
+    aggregated from the real bus/generator set (never Tier-1's fixed 5-name
+    constants) then rolled up into 5 ERCOT hub buckets for the frontend chart.
     """
-    gas_adj = (gas_price_mmbtu - 3.5) * 10.0
-    n = pypsa.Network()
-    n.set_snapshots(pd.DatetimeIndex(["2025-07-15 16:00"]))
+    n = _build_network_real(
+        system_load_mw, wind_cf, solar_cf, gas_price_mmbtu,
+        gas_derate_pct=gas_derate_pct, nuclear_derate_pct=nuclear_derate_pct, voll=voll,
+    )
 
-    for bus_id, meta in BUSES.items():
-        n.add("Bus", bus_id, x=meta["x"], y=meta["y"])
-
-    for line in LINES:
-        n.add("Line", line["name"],
-              bus0=line["bus0"], bus1=line["bus1"],
-              s_nom=float(line["s_nom"]), x=float(line["x"]))
-
-    for bus_id, frac in LOAD_FRACTIONS.items():
-        n.add("Load", f"{bus_id}-load", bus=bus_id, p_set=system_load_mw * frac)
-
-    for gen in GENERATORS:
-        carrier = gen["carrier"]
-        p_max = gen["p_max_pu"]
-        p_nom = float(gen["p_nom"])
-
-        if carrier == "wind":      p_max = wind_cf
-        elif carrier == "solar":   p_max = solar_cf
-        elif carrier == "gas":     p_max = gen["p_max_pu"] * (1 - gas_derate_pct / 100)
-        elif carrier == "nuclear": p_max = gen["p_max_pu"] * (1 - nuclear_derate_pct / 100)
-
-        mc = float(gen["marginal_cost"])
-        if carrier == "gas":    mc += gas_adj
-        if carrier == "peaker": mc = voll
-
-        n.add("Generator", gen["name"], bus=gen["bus"], carrier=carrier,
-              p_nom=p_nom, marginal_cost=mc, p_max_pu=max(0.0, p_max), p_min_pu=0.0)
-
-    n.optimize(solver_name="highs")
+    try:
+        n.optimize(solver_name="highs")
+    except Exception as e:
+        return {"error": f"Optimization failed: {e}"}
     if n.objective is None:
         return {"error": "Optimization failed — load exceeds all available capacity"}
 
+    buses_db, _ = _load_topology_from_db()
+    tier = 2 if buses_db else 1
+    hub_of: dict[str, str] = (
+        bus_hub_map(buses_db) if tier == 2
+        else {bus_id: bus_id for bus_id in n.buses.index}
+    )
+
     lmp: dict[str, float] = {}
-    for bus_id in BUSES:
+    for bus_id in n.buses.index:
         try:
             val = float(n.buses_t.marginal_price.get(bus_id, pd.Series([0.0])).iloc[0])
         except Exception:
             val = 0.0
         lmp[bus_id] = round(val, 2)
 
-    load_shed: dict[str, float] = {}
-    total_shed_mw = 0.0
-    for gen in GENERATORS:
-        if gen["carrier"] != "peaker":
-            continue
-        bus = gen["bus"]
+    all_dispatch: dict[str, float] = {}
+    for g in n.generators.index:
         try:
-            dispatch = float(n.generators_t.p[gen["name"]].iloc[0])
+            all_dispatch[g] = float(n.generators_t.p[g].iloc[0])
         except Exception:
-            dispatch = 0.0
-        load_shed[bus] = round(dispatch, 1)
-        total_shed_mw += dispatch
+            all_dispatch[g] = 0.0
 
     carrier_dispatch: dict[str, float] = {}
-    for gen in GENERATORS:
-        c = gen["carrier"]
-        if c in HIDDEN_CARRIERS:
+    total_shed_mw = 0.0
+    total_avail = 0.0
+    for g in n.generators.index:
+        carrier = str(n.generators.at[g, "carrier"])
+        dispatch = all_dispatch.get(g, 0.0)
+        if carrier == "peaker":
+            total_shed_mw += dispatch
             continue
-        try:
-            d = float(n.generators_t.p[gen["name"]].iloc[0])
-        except Exception:
-            d = 0.0
-        carrier_dispatch[c] = carrier_dispatch.get(c, 0.0) + d
+        carrier_dispatch[carrier] = carrier_dispatch.get(carrier, 0.0) + dispatch
+        p_nom = float(n.generators.at[g, "p_nom"])
+        p_max_pu = float(n.generators.at[g, "p_max_pu"])
+        total_avail += p_nom * p_max_pu
 
-    total_gas_cap = sum(
-        g["p_nom"] * g["p_max_pu"] * (1 - gas_derate_pct / 100)
-        for g in GENERATORS if g["carrier"] == "gas"
-    )
-    total_nuke_cap = sum(
-        g["p_nom"] * g["p_max_pu"] * (1 - nuclear_derate_pct / 100)
-        for g in GENERATORS if g["carrier"] == "nuclear"
-    )
-    total_wind_cap = sum(g["p_nom"] * wind_cf for g in GENERATORS if g["carrier"] == "wind")
-    total_solar_cap = sum(g["p_nom"] * solar_cf for g in GENERATORS if g["carrier"] == "solar")
-    total_avail = total_gas_cap + total_nuke_cap + total_wind_cap + total_solar_cap
     reserve_margin = (total_avail - system_load_mw) / system_load_mw * 100
 
-    lines_result = []
-    for line in LINES:
-        name = line["name"]
-        try:
-            flow = float(n.lines_t.p0[name].iloc[0])
-        except Exception:
-            flow = 0.0
-        cap = float(line["s_nom"])
-        loading_pct = abs(flow) / cap * 100 if cap > 0 else 0.0
-        lines_result.append({
-            "name": name,
-            "bus0": line["bus0"],
-            "bus1": line["bus1"],
-            "flow_mw": round(flow, 1),
-            "loading_pct": round(loading_pct, 1),
-            "is_congested": loading_pct >= 95.0,
-        })
+    def _load_mw(load_name: str) -> float:
+        return float(n.loads.at[load_name, "p_set"]) if load_name in n.loads.index else 0.0
 
-    max_lmp = max(lmp.values())
+    hub_load: dict[str, float] = {}
+    hub_lmp_weighted: dict[str, float] = {}
+    for load_name in n.loads.index:
+        bus_id = str(n.loads.at[load_name, "bus"])
+        load_mw = _load_mw(load_name)
+        hub = hub_of.get(bus_id, "SOUTH")
+        hub_load[hub] = hub_load.get(hub, 0.0) + load_mw
+        hub_lmp_weighted[hub] = hub_lmp_weighted.get(hub, 0.0) + load_mw * lmp.get(bus_id, 0.0)
+
+    hub_shed: dict[str, float] = {}
+    for g in n.generators.index:
+        if str(n.generators.at[g, "carrier"]) != "peaker":
+            continue
+        bus_id = str(n.generators.at[g, "bus"])
+        hub = hub_of.get(bus_id, "SOUTH")
+        hub_shed[hub] = hub_shed.get(hub, 0.0) + all_dispatch.get(g, 0.0)
+
+    zone_risk = []
+    for hub in sorted(hub_load.keys()):
+        hub_load_mw = hub_load[hub]
+        shed = hub_shed.get(hub, 0.0)
+        avg_hub_lmp = hub_lmp_weighted[hub] / max(hub_load_mw, 1.0)
+        zone_risk.append({
+            "zone": hub,
+            "hub": f"HB_{hub}",
+            "lmp": round(avg_hub_lmp, 2),
+            "load_mw": round(hub_load_mw, 0),
+            "load_shed_mw": round(shed, 1),
+            "shed_pct": round(shed / max(hub_load_mw, 1) * 100, 1),
+        })
+        # Backward-compat: legacy pypsa-scarcity.tsx page reads lmp[busId]
+        # keyed by hub label (NORTH/WEST/PAN/SOUTH/HOUSTON), not real bus
+        # names. Merge the hub-level weighted LMP under that key too.
+        lmp[hub] = round(avg_hub_lmp, 2)
+
+    # System-wide LMP stats: load-weighted, restricted to loaded buses (a
+    # 340-bus network has many unloaded buses whose LMP is not meaningful).
+    loaded_buses = {str(n.loads.at[l, "bus"]) for l in n.loads.index}
+    loaded_lmps = [lmp[b] for b in loaded_buses if b in lmp]
+    avg_lmp = sum(loaded_lmps) / len(loaded_lmps) if loaded_lmps else 0.0
+    max_lmp = max(loaded_lmps) if loaded_lmps else 0.0
+    min_lmp_v = min(loaded_lmps) if loaded_lmps else 0.0
+
     if max_lmp >= voll * 0.9:
         scarcity_level = "CRITICAL"
     elif max_lmp >= 300:
@@ -430,33 +433,39 @@ def run_scarcity(
     else:
         scarcity_level = "NORMAL"
 
-    zone_risk = []
-    for bus_id in BUSES:
-        shed = load_shed.get(bus_id, 0.0)
-        zone_load = system_load_mw * LOAD_FRACTIONS[bus_id]
-        zone_risk.append({
-            "zone": bus_id,
-            "hub": HUB_MAP[bus_id],
-            "lmp": lmp.get(bus_id, 0.0),
-            "load_mw": round(zone_load, 0),
-            "load_shed_mw": shed,
-            "shed_pct": round(shed / max(zone_load, 1) * 100, 1),
+    lines_result = []
+    for line_id in n.lines.index:
+        try:
+            flow = float(n.lines_t.p0[line_id].iloc[0])
+        except Exception:
+            flow = 0.0
+        cap = float(n.lines.at[line_id, "s_nom"])
+        loading_pct = abs(flow) / cap * 100 if cap > 0 else 0.0
+        lines_result.append({
+            "name": line_id,
+            "bus0": n.lines.at[line_id, "bus0"],
+            "bus1": n.lines.at[line_id, "bus1"],
+            "flow_mw": round(flow, 1),
+            "loading_pct": round(loading_pct, 1),
+            "is_congested": loading_pct >= 95.0,
         })
+    lines_result.sort(key=lambda l: l["loading_pct"], reverse=True)
 
     return {
         "status": "optimal",
+        "tier": tier,
         "scarcity_level": scarcity_level,
         "system_load_mw": system_load_mw,
         "total_available_mw": round(total_avail, 0),
         "reserve_margin_pct": round(reserve_margin, 1),
         "total_load_shed_mw": round(total_shed_mw, 1),
-        "avg_lmp": round(sum(lmp.values()) / len(lmp), 2),
+        "avg_lmp": round(avg_lmp, 2),
         "max_lmp": round(max_lmp, 2),
-        "lmp_spread": round(max(lmp.values()) - min(lmp.values()), 2),
+        "lmp_spread": round(max_lmp - min_lmp_v, 2),
         "lmp": lmp,
         "carrier_dispatch": {k: round(v, 1) for k, v in carrier_dispatch.items()},
         "zone_risk": zone_risk,
-        "lines": lines_result,
+        "lines": lines_result[:20],
         "voll": voll,
     }
 
