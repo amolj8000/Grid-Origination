@@ -9,7 +9,7 @@ Identify renewable energy projects (wind, solar, storage) from the EIA 860 datab
 
 Workflow: Pull EIA 860 projects → Show on Map → Screen by filters → Score on 10 risk dimensions → Rank → Export for deal team.
 
-**10 scoring dimensions:** congestion risk, curtailment risk, basis risk, tax credit eligibility, sponsor quality, contract structure, market type, capacity available, delivery profile, confidence score.
+**10 scoring dimensions** (`candidates` table columns, shown in Rankings as noted): priceScore ("Capture Price"), locationScore ("Basis Risk"), curtailmentScore ("Curtailment"), interconnectionScore ("Congestion"), regulatoryScore ("Tax Credit" — ITC/PTC eligibility, shown in PPA Calculator), financialScore ("Mkt Revenue"), environmentalScore ("RECs/Yr"), gridStabilityScore ("Shape" — generation/load timing risk, shown in PPA Calculator), demandProximityScore ("Capacity"), developmentRiskScore ("Interconnect Risk"). All driven by real ERCOT/CAISO/PJM nodal, queue, and REC-market data. Six selectable investment objectives on Rankings re-weight the composite score (Risk-Adjusted, Lowest LCOE, Corporate Hedge, Decarbonization, Capacity Value, Merchant Upside).
 
 ### Use Case 2 — New Project Siting via Queue Analysis
 Analyze the interconnection queue to find regions where a new greenfield project could be sited with acceptable queue position, limited congestion/curtailment competition, and favorable basis. Some areas already have heavy pipeline; others represent opportunity.
@@ -47,21 +47,95 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 
 ## Pages
 
+*Note: the standalone `/pjm` historical price page was retired (no route, no nav entry) when Nodal Analysis was narrowed to ERCOT/CAISO only. PJM as a market is still live elsewhere — `pjm_node_stats`, queue tracker, EIA 860 BA mapping, Rankings/REC scoring.*
+
+**Core Origination**
+
 | Path | Purpose |
 |------|---------|
 | `/` | Dashboard — stats overview, market breakdown, screening launcher |
-| `/rankings` | Candidate rankings table with all 10 dimension scores |
+| `/rankings` | Candidate rankings — 10 dimension scores, 6 selectable investment objectives |
 | `/map` | Leaflet map — EIA 860 project pins + queue project markers |
-| `/ercot` | ERCOT Historical — DA/RT price trends for hubs and load zones |
-| `/caiso` | CAISO Historical — NP15/SP15/ZP26 price analysis |
-| `/pjm` | PJM Historical — 8 hubs/zones, on/off-peak, YoY comparison |
-| `/nodal` | ERCOT/CAISO Nodal Analysis — settlement point spread calculator (PJM removed; ERCOT/CAISO only) |
-| `/congestion` | ERCOT Congestion Analysis — DA-RT spread heatmap and ranking |
-| `/queue` | Interconnection Queue — ERCOT/CAISO/PJM queue project tracker |
-| `/qa` | Q&A Copilot — LLM chat interface (planned: OpenAI + DB RAG) |
 | `/export` | Export Center — top candidate cards + CSV export |
 | `/screenings` | Saved Screenings — saved filter sessions |
 | `/guide` | Platform Guide — explains every tab and both use cases |
+
+**Price Risk Analysis**
+
+| Path | Purpose |
+|------|---------|
+| `/ercot` | ERCOT Historical — DA/RT monthly price trends for hubs and load zones |
+| `/caiso` | CAISO Historical — NP15/SP15/ZP26 monthly price analysis |
+| `/nodal` | ERCOT/CAISO Nodal Analysis — settlement point spread calculator |
+| `/caiso-hourly` | CAISO Hourly Price Data — DAM + HASP, NP15/SP15/ZP26 |
+| `/ercot-gas` | ERCOT Gas & Power Fundamentals — Henry Hub, spark spreads, implied heat rates |
+
+**Queue & Siting**
+
+| Path | Purpose |
+|------|---------|
+| `/queue` | Interconnection Queue — ERCOT/CAISO/PJM queue project tracker |
+
+**Congestion Intelligence**
+
+| Path | Purpose |
+|------|---------|
+| `/congestion` | ERCOT Congestion Analysis — DA-RT spread heatmap and ranking |
+| `/ci` | Congestion Intelligence Engine overview |
+| `/ci-heatmap` | Congestion Heat Map |
+| `/ci-node` | Node Detail |
+| `/ci-basis` | Basis Risk Analyzer |
+| `/ci-backtest` | Backtest — held-out seasonal mean model |
+| `/ci-quality` | Data Quality Dashboard |
+| `/ci-methodology` | Methodology & Portfolio Case Study |
+
+**PyPSA Engine**
+
+| Path | Purpose |
+|------|---------|
+| `/pypsa-network` | PyPSA Network — ERCOT Tier-2 340-bus OPF |
+| `/pypsa-ml` | XGBoost Congestion Model |
+| `/pypsa-hourly` | Hourly Price Data |
+| `/ercot-dispatch` | ERCOT Dispatch Intelligence — real SCED dispatch + offer curves |
+
+**PyPSA Scenarios**
+
+| Path | Purpose |
+|------|---------|
+| `/pypsa-curtailment` | Renewable Curtailment Simulator |
+| `/pypsa-tx-relief` | Transmission Constraint Relief |
+| `/pypsa-scarcity` | Scarcity & Load Shedding Simulator |
+| `/pypsa-battery` | Battery Revenue Simulator |
+| `/pypsa-expansion` | Multi-Year Capacity Expansion Optimizer |
+
+**Market Intelligence**
+
+| Path | Purpose |
+|------|---------|
+| `/generators` | Generator Stack Intelligence — thermal merit-order dispatch |
+| `/regulatory` | Regulatory & Tax Intelligence tracker |
+
+**Load & Infrastructure**
+
+| Path | Purpose |
+|------|---------|
+| `/weather` | Temperature & Load Forecast — 3yr forecast, 11 zones |
+| `/ev-charging` | EV Charging Load — fleet growth vs zone load |
+| `/datacenters` | AI & Data Center Load — hyperscaler/colo tracker |
+| `/load-forecast-stress` | Load Forecast & Stress Test — PyPSA scarcity OPF vs forecast peak |
+
+**Financial & ESG**
+
+| Path | Purpose |
+|------|---------|
+| `/recs` | REC Analysis — REC production/value by project |
+| `/ppa` | PPA / NPV Calculator — VPPA cashflow model |
+
+**Assistance**
+
+| Path | Purpose |
+|------|---------|
+| `/qa` | Q&A Copilot — GPT-4o chat with SQL tool, PyPSA sim tool, web search |
 
 ## Database Entities
 
@@ -74,6 +148,23 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 | `caiso_node_stats` | CAISO NP15/SP15/ZP26 monthly DA/RT stats (all real from OASIS) |
 | `pjm_node_stats` | PJM 8 hubs/zones monthly DA/RT stats |
 | `queue_projects` | Interconnection queue records (ERCOT, CAISO, PJM) |
+| `ercot_hub_hourly` | ERCOT hub/zone hourly DA+RT prices (Python XML parser from CDR) |
+| `caiso_hub_hourly` | CAISO NP15/SP15/ZP26 hourly DAM + HASP prices |
+| `conversations`, `messages` | Q&A Copilot chat history |
+| `ercot_buses`, `ercot_lines` | ERCOT 340-bus / line topology for PyPSA Tier-2 network |
+| `ercot_bus_shift_factors` | DC PTDF-derived shift factors per bus, mapped to EIA sub-BA zones |
+| `ercot_load_by_zone` | Real EIA-930 hourly load, 8 ERCOT zones |
+| `ercot_fuel_mix` | Real EIA-930 hourly fuel mix, 8 fuel types |
+| `hourly_temperatures` | Historical hourly temps, 11 zones (8 ERCOT + 3 CAISO) |
+| `temperature_forecasts` | 3yr climatological temperature projections, 11 zones |
+| `load_forecasts` | 3yr daily load forecasts (base + EV + datacenter increments), 8 ERCOT zones |
+| `datacenters` | 55 curated hyperscaler/colo facilities (ERCOT/CAISO/PJM) |
+| `regulatory_items` | Curated regulatory/tax policy tracker (ERCOT/CAISO/Federal) |
+| `gas_prices` | Henry Hub daily spot prices (FRED DHHNGSP) |
+| `generators`, `thermal_params` | ERCOT thermal fleet + heat rate/capacity params for merit-order dispatch |
+| `ercot_hourly_dispatch`, `ercot_dispatch_seed_log` | Real 5-min SCED dispatch (hourly agg) + offer curves, seeding progress log |
+| `ercot_node_locations`, `caiso_node_locations` | Lat/lon + zone for pricing nodes (raw SQL tables, not in Drizzle schema) |
+| `transmission_lines` | 115kV+ ERCOT/CAISO/PJM + 345kV+ national transmission line geometry (raw SQL table) |
 
 ## Data Status
 
@@ -87,7 +178,17 @@ The Q&A Copilot should eventually answer natural-language questions about the pl
 | ERCOT fuel mix | **REAL** | 167,190 rows Jan 2024–Jun 2026. 8 fuel types from EIA-930 fuel-type-data (ERCO respondent). Gas ~22 GW avg, wind ~13 GW, solar ~7 GW, hydro ~52 MW (accurate — ERCOT has almost no hydro). |
 | Interconnection Queue | **REAL (ERCOT + CAISO)** | ERCOT: 1,793 real projects from ERCOT GIS Report pg7-200-er (public EMIL portal, no auth). Script: `seed-ercot-queue-real` (pypsa venv, gridstatus lib). CAISO: 2,433 real projects from public ISO data. PJM: 580 synthetic. |
 | EIA 860 projects | **Live (2024)** | 3,875 operable generators >1 MW from EIA Form 860 2024 "Operable" sheet. ISO mapped via BA codes (ERCO/CISO/PJM). |
-| ERCOT Hourly Dispatch (SCED) | **REAL (loading)** | Real 5-min SCED dispatch + offer curves from NP3-965-ER 60-day disclosure. 1,215 resources, ~26K rows/day (hourly agg). Jan 2024 → May 2026 = 852 days; background seeder running (~3.5 hrs total). Tables: `ercot_hourly_dispatch`, `ercot_dispatch_seed_log`. Script: `seed-ercot-dispatch` (pypsa venv). Admin: POST /pypsa/admin/seed-dispatch. |
+| ERCOT Hourly Dispatch (SCED) | **REAL (gap-fill in progress)** | Real 5-min SCED dispatch + offer curves from NP3-965-ER 60-day disclosure. 1,215 resources, ~26K rows/day (hourly agg), Jan 2024–May 2026. Background seeder auto-resumes on PyPSA engine startup. Tables: `ercot_hourly_dispatch`, `ercot_dispatch_seed_log`. Script: `seed-ercot-dispatch` (pypsa venv). Admin: POST /pypsa/admin/seed-dispatch. |
+| CAISO Hourly prices | **REAL** | 63,495 rows. Real OASIS PRC_LMP (DAM) + PRC_HASP_LMP (HASP). NP15/SP15/ZP26 × 29 months. |
+| ERCOT Hub/Zone Hourly | **REAL** | 263,130 rows. Real CDR 13060/13061 hourly, 15 nodes, Jan 2024–Dec 2025. Custom Python XML parser (files too large for XLSX lib). |
+| Temperature & Load Forecast | **REAL + modeled** | 232k+ hourly temp rows (11 zones, Open-Meteo archive). 3yr load forecast (8,768 rows, 8 ERCOT zones) via OLS regression R²=0.88–0.92, EV/datacenter increments layered on top. |
+| ERCOT Gas Prices | **REAL** | 651 rows Henry Hub daily spot from FRED DHHNGSP (public, no key). Holiday gaps forward-filled from prior trading day. |
+| Generator Stack (Thermal) | **REAL** | 31 ERCOT thermal units with real heat rates/capacities from EIA 860/923. Merit-order dispatch model. |
+| AI & Datacenters | Seeded | 55 curated hyperscaler/colo facilities (ERCOT/CAISO/PJM) from public announcements. No live feed. |
+| Regulatory Tracker | Seeded | 30 manually curated policy items (ERCOT ×10, CAISO ×8, Federal/IRA ×12). Monthly scraper (`scripts/src/scrape-regulatory.py`) maintains currency. |
+| Transmission Lines | **REAL** | 23,674 lines (115kV+ ERCOT/CAISO/PJM + 345kV+ national) from HIFLD. Lazy-loaded on map only when layer toggled on. |
+| ERCOT/CAISO Node Locations | **REAL + geocoded** | ERCOT: 819 rows (804 exact via CDR 10008 bus mapping, rest EIA/zone-centroid). CAISO: 1,774 rows (1,771 exact via OASIS ATL_PNODE_MAP, rest EIA/zone-centroid). |
+| ERCOT Bus Shift Factors | **REAL (derived)** | DC PTDF-derived shift factors for 340 ERCOT 345kV buses via B-matrix decomposition; mapped to EIA sub-BA zones (EAST zone has none in model). |
 | Candidate scoring | Partial | Scoring engine live on all 3,875 EIA 860 plants. Real signal scoring from nodal+queue data planned. |
 
 ## Real Data Sources

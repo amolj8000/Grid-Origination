@@ -17,6 +17,7 @@ import LTA from "@/pages/lta";
 import REM from "@/pages/rem";
 import AUC from "@/pages/auc";
 import MSA from "@/pages/msa";
+import Guide from "@/pages/guide";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ function Router() {
         <Route path="/auc" component={AUC} />
         <Route path="/msa" component={MSA} />
         <Route path="/qa" component={AesoQACopilot} />
+        <Route path="/guide" component={Guide} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
