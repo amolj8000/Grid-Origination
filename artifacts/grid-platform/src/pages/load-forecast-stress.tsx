@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -17,29 +16,64 @@ const API_BASE = "/api";
 const PYPSA_BASE = "/pypsa";
 const TS = { backgroundColor: "#0f172a", borderColor: "#1e293b", color: "#f8fafc", fontSize: 11 };
 
-// ── ERCOT zone config ────────────────────────────────────────────────────────
-
-const ERCOT_ZONES: Record<string, { label: string; color: string; bus: string }> = {
-  COAS: { label: "Coast",         color: "#14b8a6", bus: "HOUSTON" },
-  EAST: { label: "East",          color: "#22c55e", bus: "HOUSTON" },
-  NCEN: { label: "North Central", color: "#8b5cf6", bus: "NORTH" },
-  NRTH: { label: "North",         color: "#f59e0b", bus: "NORTH" },
-  FWES: { label: "Far West",      color: "#f97316", bus: "WEST" },
-  WEST: { label: "West",          color: "#ec4899", bus: "WEST" },
-  SCEN: { label: "South Central", color: "#ef4444", bus: "SOUTH" },
-  SOUT: { label: "South",         color: "#3b82f6", bus: "SOUTH" },
+// ── ERCOT hub config ─────────────────────────────────────────────────────────
+// load_forecasts stores load at EIA-930 "weather zone" granularity (the only
+// real load-forecast basis available). Every other tab in this platform
+// (ERCOT Historical, Congestion, Nodal, Queue, PyPSA network) uses the ERCOT
+// market Hub/Load-Zone breakdown (HB_HOUSTON/HB_NORTH/HB_WEST/HB_SOUTH), so we
+// aggregate the 8 weather zones up to the 4 hubs used by the PyPSA 5-bus
+// reduced-order model to keep the whole platform speaking the same language.
+const ERCOT_HUBS: Record<string, { label: string; short: string; color: string; zones: string[] }> = {
+  HOUSTON: { label: "HB_HOUSTON — Houston Hub (Coast + East)",         short: "Houston Hub", color: "#14b8a6", zones: ["COAS", "EAST"] },
+  NORTH:   { label: "HB_NORTH — North Hub (North Central + North)",    short: "North Hub",   color: "#f59e0b", zones: ["NCEN", "NRTH"] },
+  WEST:    { label: "HB_WEST — West Hub (Far West + West)",            short: "West Hub",    color: "#ec4899", zones: ["FWES", "WEST"] },
+  SOUTH:   { label: "HB_SOUTH — South Hub (South Central + South)",    short: "South Hub",   color: "#3b82f6", zones: ["SCEN", "SOUT"] },
 };
 
-// Mirrors artifacts/pypsa-engine/network.py _T1_LOAD — used to scale a single
-// zone's stressed load back up to a system-wide MW figure for the 5-bus model.
-const LOAD_FRACTIONS: Record<string, number> = {
-  HOUSTON: 0.38, NORTH: 0.22, SOUTH: 0.27, WEST: 0.11, PAN: 0.02,
-};
-
-interface LoadForecastRow {
-  zone: string; year: number; month: number;
-  baseMw: number; evMw: number; dcMw: number; totalMw: number; peakMw: number;
+interface LoadForecastDailyRow {
+  zone: string; year: number; month: number; day: number;
+  baseMw: number; evMw: number; dcMw: number; totalMw: number;
 }
+
+interface AggDailyRow { year: number; month: number; day: number; baseMw: number; evMw: number; dcMw: number; totalMw: number }
+
+function sumDailyBy(rows: LoadForecastDailyRow[], zones: string[] | null): AggDailyRow[] {
+  const map = new Map<string, AggDailyRow>();
+  for (const r of rows) {
+    if (zones && !zones.includes(r.zone)) continue;
+    const k = `${r.year}-${r.month}-${r.day}`;
+    const e = map.get(k);
+    if (e) {
+      e.baseMw += r.baseMw ?? 0; e.evMw += r.evMw ?? 0; e.dcMw += r.dcMw ?? 0; e.totalMw += r.totalMw ?? 0;
+    } else {
+      map.set(k, { year: r.year, month: r.month, day: r.day, baseMw: r.baseMw ?? 0, evMw: r.evMw ?? 0, dcMw: r.dcMw ?? 0, totalMw: r.totalMw ?? 0 });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function maxByTotal(rows: AggDailyRow[]): AggDailyRow | null {
+  return rows.reduce<AggDailyRow | null>((max, r) => (!max || r.totalMw > max.totalMw ? r : max), null);
+}
+
+// Real EIA-860 2024 operable nameplate capacity, ERCOT market — matches the
+// PyPSA Tier-1 model's wind/solar p_nom sums exactly (see network.py _T1_GEN).
+const ERCOT_WIND_NAMEPLATE_MW = 38_566.7;
+const ERCOT_SOLAR_NAMEPLATE_MW = 22_171.5;
+// PyPSA Tier-1 reduced-order model's total gas_cc + gas_ct nameplate across
+// all 4 buses (network.py _T1_GEN) — this is what the OPF actually derates,
+// which differs from the smaller real ERCOT gas fleet by design (reduced-order model).
+const ERCOT_TIER1_GAS_MW = 96_241;
+
+// Renewables Output % → wind/solar capacity factor. Ceilings calibrated so a
+// shared default of 50% reproduces each fuel's real average CF computed from
+// ercot_fuel_mix (Jan 2024–Jun 2026 hourly, gen_mw / EIA-860 nameplate): wind
+// mean 34.6% (σ 18.0pp), solar mean 31.6% (σ 40.2pp, day/night bimodal). A
+// single knob can't hit both fuels' 2σ ceilings at once, so the default is
+// prioritized (exact real-average match); max=110% pushes wind to ~76% CF,
+// just beyond its observed historical max of 74.7%.
+const WIND_CF_CEILING = 0.691;
+const SOLAR_CF_CEILING = 0.632;
 
 // ── CAISO hub config ─────────────────────────────────────────────────────────
 
@@ -86,7 +120,7 @@ const LEVEL_COLORS: Record<string, { bg: string; border: string; text: string }>
 
 export default function LoadForecastStress() {
   const [iso, setIso] = useState<"ERCOT" | "CAISO">("ERCOT");
-  const [ercotZone, setErcotZone] = useState("NCEN");
+  const [ercotHub, setErcotHub] = useState("NORTH");
   const [caisoHub, setCaisoHub] = useState("SP15");
 
   const [renewPct, setRenewPct] = useState(50);
@@ -96,41 +130,50 @@ export default function LoadForecastStress() {
   const [caisoLoadMw, setCaisoLoadMw] = useState(27000);
   const [caisoEvAdd,  setCaisoEvAdd]  = useState(500);
   const [caisoDcAdd,  setCaisoDcAdd]  = useState(1000);
-  const [gasDerate,   setGasDerate]   = useState(15);
+  const [gasDerate,   setGasDerate]   = useState(6);
 
   // ── ERCOT data ──────────────────────────────────────────────────────────
-  const { data: ercotRows = [], isLoading: ercotLoading } = useQuery<LoadForecastRow[]>({
-    queryKey: ["load-forecast-overview"],
-    queryFn: () => fetch(`${API_BASE}/load-forecast/overview`).then(r => r.json()),
+  const { data: dailyRows = [], isLoading: ercotLoading } = useQuery<LoadForecastDailyRow[]>({
+    queryKey: ["load-forecast-zones-daily"],
+    queryFn: () => fetch(`${API_BASE}/load-forecast/zones`).then(r => r.json()),
     staleTime: 10 * 60 * 1000,
     enabled: iso === "ERCOT",
   });
 
-  const zoneRows = useMemo(
-    () => ercotRows.filter(r => r.zone === ercotZone).sort((a, b) => a.year - b.year || a.month - b.month),
-    [ercotRows, ercotZone]
+  const hubDailyRows = useMemo(
+    () => sumDailyBy(dailyRows, ERCOT_HUBS[ercotHub]?.zones ?? null),
+    [dailyRows, ercotHub]
   );
 
-  const zoneChartData = useMemo(() => zoneRows.map(r => ({
-    label: `${r.month}/${String(r.year).slice(2)}`,
-    base: Math.round(r.baseMw), ev: Math.round(r.evMw), dc: Math.round(r.dcMw),
-  })), [zoneRows]);
+  const zoneChartData = useMemo(() => {
+    const map = new Map<string, { year: number; month: number; base: number; ev: number; dc: number; n: number }>();
+    for (const r of hubDailyRows) {
+      const k = `${r.year}-${r.month}`;
+      const e = map.get(k);
+      if (e) { e.base += r.baseMw; e.ev += r.evMw; e.dc += r.dcMw; e.n++; }
+      else map.set(k, { year: r.year, month: r.month, base: r.baseMw, ev: r.evMw, dc: r.dcMw, n: 1 });
+    }
+    return Array.from(map.values())
+      .sort((a, b) => a.year - b.year || a.month - b.month)
+      .map(e => ({
+        label: `${e.month}/${String(e.year).slice(2)}`,
+        base: Math.round(e.base / e.n), ev: Math.round(e.ev / e.n), dc: Math.round(e.dc / e.n),
+      }));
+  }, [hubDailyRows]);
 
-  const peakRow = useMemo(
-    () => zoneRows.reduce<LoadForecastRow | null>(
-      (max, r) => (!max || r.totalMw > max.totalMw ? r : max), null
-    ),
-    [zoneRows]
-  );
+  const hubPeakDay = useMemo(() => maxByTotal(hubDailyRows), [hubDailyRows]);
 
-  const mappedBus = ERCOT_ZONES[ercotZone]?.bus ?? "NORTH";
-  const windCf  = (renewPct / 100) * 0.55;
-  const solarCf = (renewPct / 100) * 0.35;
+  // System-wide (all 8 zones) coincident peak day — the real input to the
+  // PyPSA scarcity call, independent of which hub is selected for display.
+  const systemDailyRows = useMemo(() => sumDailyBy(dailyRows, null), [dailyRows]);
+  const systemPeakDay = useMemo(() => maxByTotal(systemDailyRows), [systemDailyRows]);
 
-  const stressedZoneLoad = peakRow
-    ? peakRow.baseMw + peakRow.evMw * (evPct / 100) + peakRow.dcMw * (dcPct / 100)
+  const windCf  = (renewPct / 100) * WIND_CF_CEILING;
+  const solarCf = (renewPct / 100) * SOLAR_CF_CEILING;
+
+  const systemLoadMw = systemPeakDay
+    ? systemPeakDay.baseMw + systemPeakDay.evMw * (evPct / 100) + systemPeakDay.dcMw * (dcPct / 100)
     : 0;
-  const systemLoadMw = stressedZoneLoad / (LOAD_FRACTIONS[mappedBus] ?? 0.22);
 
   const ercotMut = useMutation({
     mutationFn: async (params: object) => {
@@ -223,17 +266,15 @@ export default function LoadForecastStress() {
         </div>
       </div>
 
-      {/* Zone / Hub selector */}
+      {/* Hub selector */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-muted-foreground uppercase tracking-wide">
-          {iso === "ERCOT" ? "Zone" : "Hub"}
-        </span>
+        <span className="text-xs text-muted-foreground uppercase tracking-wide">Hub</span>
         {iso === "ERCOT" ? (
-          <Select value={ercotZone} onValueChange={setErcotZone}>
-            <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+          <Select value={ercotHub} onValueChange={setErcotHub}>
+            <SelectTrigger className="w-[340px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {Object.entries(ERCOT_ZONES).map(([z, meta]) => (
-                <SelectItem key={z} value={z}>{z} — {meta.label}</SelectItem>
+              {Object.entries(ERCOT_HUBS).map(([h, meta]) => (
+                <SelectItem key={h} value={h}>{meta.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -253,15 +294,16 @@ export default function LoadForecastStress() {
         <ErcotPanel
           loading={ercotLoading}
           zoneChartData={zoneChartData}
-          zoneMeta={ERCOT_ZONES[ercotZone]}
-          peakRow={peakRow}
-          mappedBus={mappedBus}
+          hubMeta={ERCOT_HUBS[ercotHub]}
+          hubPeakDay={hubPeakDay}
+          ercotHub={ercotHub}
           renewPct={renewPct} setRenewPct={setRenewPct}
           evPct={evPct} setEvPct={setEvPct}
           dcPct={dcPct} setDcPct={setDcPct}
           gasDerate={gasDerate} setGasDerate={setGasDerate}
           windCf={windCf} solarCf={solarCf}
           systemLoadMw={systemLoadMw}
+          systemPeakDay={systemPeakDay}
           onRun={runErcotStressTest}
           isPending={ercotMut.isPending}
           result={ercotResult}
@@ -274,6 +316,7 @@ export default function LoadForecastStress() {
           cap={caisoCap}
           hubLabel={CAISO_HUBS[caisoHub].label}
           renewPct={renewPct} setRenewPct={setRenewPct}
+          windCf={windCf} solarCf={solarCf}
           gasDerate={gasDerate} setGasDerate={setGasDerate}
           caisoLoadMw={caisoLoadMw} setCaisoLoadMw={setCaisoLoadMw}
           caisoEvAdd={caisoEvAdd} setCaisoEvAdd={setCaisoEvAdd}
@@ -290,24 +333,25 @@ export default function LoadForecastStress() {
 function ErcotPanel(props: {
   loading: boolean;
   zoneChartData: Array<{ label: string; base: number; ev: number; dc: number }>;
-  zoneMeta?: { label: string; color: string; bus: string };
-  peakRow: LoadForecastRow | null;
-  mappedBus: string;
+  hubMeta?: { label: string; short: string; color: string; zones: string[] };
+  hubPeakDay: AggDailyRow | null;
+  ercotHub: string;
   renewPct: number; setRenewPct: (v: number) => void;
   evPct: number; setEvPct: (v: number) => void;
   dcPct: number; setDcPct: (v: number) => void;
   gasDerate: number; setGasDerate: (v: number) => void;
   windCf: number; solarCf: number;
   systemLoadMw: number;
+  systemPeakDay: AggDailyRow | null;
   onRun: () => void;
   isPending: boolean;
   result?: ScarcityResult;
   level: string;
   errorMsg?: string;
 }) {
-  const { loading, zoneChartData, zoneMeta, peakRow, mappedBus, renewPct, setRenewPct,
+  const { loading, zoneChartData, hubMeta, hubPeakDay, ercotHub, renewPct, setRenewPct,
     evPct, setEvPct, dcPct, setDcPct, gasDerate, setGasDerate, windCf, solarCf,
-    systemLoadMw, onRun, isPending, result, level, errorMsg } = props;
+    systemLoadMw, systemPeakDay, onRun, isPending, result, level, errorMsg } = props;
 
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading load forecast…</div>;
@@ -315,14 +359,20 @@ function ErcotPanel(props: {
 
   const levelColors = LEVEL_COLORS[level];
 
+  const combinedRenewMw = windCf * ERCOT_WIND_NAMEPLATE_MW + solarCf * ERCOT_SOLAR_NAMEPLATE_MW;
+  const evMwValue = systemPeakDay ? systemPeakDay.evMw * (evPct / 100) : 0;
+  const dcMwValue = systemPeakDay ? systemPeakDay.dcMw * (dcPct / 100) : 0;
+  const gasOfflineMw = ERCOT_TIER1_GAS_MW * (gasDerate / 100);
+
   return (
     <div className="space-y-6">
       {/* Forecast chart */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">3-Year Load Forecast — {zoneMeta?.label}</CardTitle>
+          <CardTitle className="text-sm">3-Year Load Forecast — {hubMeta?.short}</CardTitle>
           <CardDescription className="text-xs">
-            OLS temperature regression + EV &amp; datacenter increments · Jul 2026 – Jun 2029 (real EIA-930 basis)
+            OLS temperature regression + EV &amp; datacenter increments · Jul 2026 – Jun 2029 (real EIA-930 basis,
+            aggregated from {hubMeta?.zones.join(" + ")} weather zones)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -333,18 +383,18 @@ function ErcotPanel(props: {
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#94a3b8" }} interval={5} />
                 <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={v => `${(v / 1000).toFixed(0)}GW`} width={40} />
                 <RechartsTooltip contentStyle={TS} formatter={(v: number) => [`${v.toLocaleString()} MW`]} />
-                <Area type="monotone" dataKey="base" stackId="1" stroke={zoneMeta?.color ?? "#14b8a6"} fill={zoneMeta?.color ?? "#14b8a6"} fillOpacity={0.35} />
+                <Area type="monotone" dataKey="base" stackId="1" stroke={hubMeta?.color ?? "#14b8a6"} fill={hubMeta?.color ?? "#14b8a6"} fillOpacity={0.35} />
                 <Area type="monotone" dataKey="ev" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.35} />
                 <Area type="monotone" dataKey="dc" stackId="1" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.35} />
                 <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          {peakRow && (
+          {hubPeakDay && (
             <p className="text-xs text-muted-foreground mt-2">
-              Forecasted peak: <span className="text-foreground font-mono">{peakRow.totalMw.toLocaleString()} MW</span>{" "}
-              ({peakRow.month}/{peakRow.year}) — mapped to PyPSA reduced-order bus{" "}
-              <span className="font-mono text-teal-400">{mappedBus}</span> ({(LOAD_FRACTIONS[mappedBus] * 100).toFixed(0)}% of ERCOT system load)
+              Forecasted peak: <span className="text-foreground font-mono">{Math.round(hubPeakDay.totalMw).toLocaleString()} MW</span>{" "}
+              ({hubPeakDay.month}/{hubPeakDay.day}/{hubPeakDay.year}) — PyPSA reduced-order bus{" "}
+              <span className="font-mono text-teal-400">HB_{ercotHub}</span>
             </p>
           )}
         </CardContent>
@@ -356,26 +406,60 @@ function ErcotPanel(props: {
           <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
             Stress Test Parameters
           </CardTitle>
+          <CardDescription className="text-xs">
+            Defaults reflect real base-case conditions; bounds extend to (or slightly beyond) observed best/worst case
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <SliderField label="Renewables Output" value={renewPct} onChange={setRenewPct} min={0} max={100} step={5}
-              display={`${renewPct}%`} color="text-teal-400" sub={`wind ${(windCf * 100).toFixed(0)}% CF / solar ${(solarCf * 100).toFixed(0)}% CF`} />
-            <SliderField label="EV Load" value={evPct} onChange={setEvPct} min={50} max={300} step={10}
-              display={`${evPct}%`} color="text-amber-400" sub="of forecasted EV increment" />
-            <SliderField label="Datacenter Load" value={dcPct} onChange={setDcPct} min={50} max={400} step={10}
-              display={`${dcPct}%`} color="text-purple-400" sub="of forecasted DC pipeline" />
-            <SliderField label="Gas Capacity Derate" value={gasDerate} onChange={setGasDerate} min={0} max={50} step={5}
-              display={`−${gasDerate}%`} color="text-orange-400" sub="freeze / maintenance outages" />
+            <SliderField
+              label="Renewables Output" value={renewPct} onChange={setRenewPct} min={0} max={110} step={1}
+              absolute={`${(combinedRenewMw / 1000).toFixed(1)} GW`}
+              percent={`${renewPct}%`}
+              color="text-teal-400"
+              sub={`wind ${(windCf * 100).toFixed(0)}% CF / solar ${(solarCf * 100).toFixed(0)}% CF`}
+            />
+            <SliderField
+              label="EV Load" value={evPct} onChange={setEvPct} min={40} max={220} step={5}
+              absolute={`${Math.round(evMwValue).toLocaleString()} MW`}
+              percent={`${evPct}%`}
+              color="text-amber-400"
+              sub="of forecasted EV increment"
+            />
+            <SliderField
+              label="Datacenter Load" value={dcPct} onChange={setDcPct} min={30} max={300} step={5}
+              absolute={`${Math.round(dcMwValue).toLocaleString()} MW`}
+              percent={`${dcPct}%`}
+              color="text-purple-400"
+              sub="of forecasted DC pipeline"
+            />
+            <SliderField
+              label="Gas Capacity Derate" value={gasDerate} onChange={setGasDerate} min={0} max={55} step={1}
+              absolute={`−${(gasOfflineMw / 1000).toFixed(1)} GW`}
+              percent={`−${gasDerate}%`}
+              color="text-orange-400"
+              sub="of 96.2 GW Tier-1 gas fleet"
+            />
           </div>
           <div className="mt-4 flex items-center gap-3">
-            <Button size="sm" variant="default" className="bg-teal-600 hover:bg-teal-700" disabled={isPending || !peakRow} onClick={onRun}>
+            <Button size="sm" variant="default" className="bg-teal-600 hover:bg-teal-700" disabled={isPending || !systemPeakDay} onClick={onRun}>
               {isPending ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Running PyPSA OPF...</> : "Run Stress Test"}
             </Button>
             <span className="text-xs text-muted-foreground">
               System-wide load implied: <span className="font-mono text-foreground">{(systemLoadMw / 1000).toFixed(1)} GW</span> · Full nodal OPF (ERCOT 5-bus reduced-order model)
             </span>
           </div>
+          <p className="text-xs text-muted-foreground mt-3 border-t border-border pt-3">
+            <span className="text-foreground font-medium">Methodology: </span>
+            Renewables default (50%) reproduces the real average wind/solar capacity factor from ercot_fuel_mix hourly
+            data (Jan 2024–Jun 2026): wind 34.6% CF (σ 18.0pp), solar 31.6% CF (σ 40.2pp, day/night bimodal) — one shared
+            knob can't hit both fuels' ceilings exactly, so the default is calibrated to match both real averages and the
+            110% max is set by wind's ceiling (~76% CF, just beyond its observed historical max of 74.7%). Gas derate
+            default (6%) is the real ERCOT gas fleet's average forced-outage rate (thermal_params, n=26 units); the 55%
+            max reflects Winter Storm Uri (Feb 2021), when roughly half of ERCOT gas generation was simultaneously
+            forced offline. EV/DC load bounds (40–220% / 30–300%) are scenario ranges (low/high adoption and pipeline
+            uncertainty) — the forecast has no variance data to derive a statistical bound from.
+          </p>
         </CardContent>
       </Card>
 
@@ -435,14 +519,14 @@ function ErcotPanel(props: {
                     <RechartsTooltip contentStyle={TS} formatter={(v: number) => [`$${v.toFixed(0)}/MWh`]} />
                     <Bar dataKey="lmp" radius={[2, 2, 0, 0]}>
                       {result.zone_risk.map((z, i) => (
-                        <Cell key={i} fill={z.zone === mappedBus ? "#14b8a6" : "#475569"} />
+                        <Cell key={i} fill={z.zone === ercotHub ? "#14b8a6" : "#475569"} />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                <Info className="h-3 w-3" /> Highlighted bar = zone mapped from your selected forecast zone ({mappedBus}).
+                <Info className="h-3 w-3" /> Highlighted bar = your selected hub ({ercotHub}).
               </p>
             </CardContent>
           </Card>
@@ -459,6 +543,7 @@ function CaisoPanel(props: {
   cap?: CaisoCapacityResponse;
   hubLabel: string;
   renewPct: number; setRenewPct: (v: number) => void;
+  windCf: number; solarCf: number;
   gasDerate: number; setGasDerate: (v: number) => void;
   caisoLoadMw: number; setCaisoLoadMw: (v: number) => void;
   caisoEvAdd: number; setCaisoEvAdd: (v: number) => void;
@@ -466,7 +551,7 @@ function CaisoPanel(props: {
   analysis: { available: number; stressedLoad: number; reserveMarginPct: number; deficitMw: number; level: string;
     breakdown: Array<{ fuelType: string; nameplateMw: number; availableMw: number }> } | null;
 }) {
-  const { loading, cap, hubLabel, renewPct, setRenewPct, gasDerate, setGasDerate,
+  const { loading, cap, hubLabel, renewPct, setRenewPct, windCf, solarCf, gasDerate, setGasDerate,
     caisoLoadMw, setCaisoLoadMw, caisoEvAdd, setCaisoEvAdd, caisoDcAdd, setCaisoDcAdd, analysis } = props;
 
   if (loading || !cap) {
@@ -474,6 +559,11 @@ function CaisoPanel(props: {
   }
 
   const levelColors = LEVEL_COLORS[analysis?.level ?? "NORMAL"];
+  const caisoWindMw = cap.byFuelType.find(f => f.fuelType === "wind")?.capacityMw ?? 0;
+  const caisoSolarMw = cap.byFuelType.find(f => f.fuelType === "solar")?.capacityMw ?? 0;
+  const caisoGasMw = cap.byFuelType.find(f => f.fuelType === "natural_gas")?.capacityMw ?? 0;
+  const caisoRenewMw = windCf * caisoWindMw + solarCf * caisoSolarMw;
+  const caisoGasOfflineMw = caisoGasMw * (gasDerate / 100);
 
   return (
     <div className="space-y-6">
@@ -483,6 +573,8 @@ function CaisoPanel(props: {
           CAISO reserve-margin estimate — no nodal OPF / transmission model exists for CAISO yet (ERCOT only).
           Capacity is real EIA-860 installed capacity for {hubLabel}; load is a user-specified scenario since
           no CAISO load forecast dataset is available (ERCOT's is a real OLS regression on EIA-930 data).
+          Renewables/Gas Derate defaults below are calibrated from ERCOT real data since CAISO has no equivalent
+          hourly fuel-mix dataset.
         </p>
       </div>
 
@@ -517,16 +609,18 @@ function CaisoPanel(props: {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-4">
             <SliderField label="System Load" value={caisoLoadMw} onChange={setCaisoLoadMw} min={10000} max={35000} step={500}
-              display={`${(caisoLoadMw / 1000).toFixed(1)} GW`} color="text-red-400" sub="scenario input (no forecast data)" />
+              absolute={`${(caisoLoadMw / 1000).toFixed(1)} GW`} color="text-red-400" sub="scenario input (no forecast data)" />
             <SliderField label="EV Load Add" value={caisoEvAdd} onChange={setCaisoEvAdd} min={0} max={3000} step={100}
-              display={`+${caisoEvAdd} MW`} color="text-amber-400" sub="stress increment" />
+              absolute={`+${caisoEvAdd.toLocaleString()} MW`} color="text-amber-400" sub="stress increment" />
             <SliderField label="Datacenter Load Add" value={caisoDcAdd} onChange={setCaisoDcAdd} min={0} max={5000} step={100}
-              display={`+${caisoDcAdd} MW`} color="text-purple-400" sub="stress increment" />
-            <SliderField label="Gas Capacity Derate" value={gasDerate} onChange={setGasDerate} min={0} max={50} step={5}
-              display={`−${gasDerate}%`} color="text-orange-400" sub="outages / maintenance" />
+              absolute={`+${caisoDcAdd.toLocaleString()} MW`} color="text-purple-400" sub="stress increment" />
+            <SliderField label="Gas Capacity Derate" value={gasDerate} onChange={setGasDerate} min={0} max={55} step={1}
+              absolute={`−${(caisoGasOfflineMw / 1000).toFixed(2)} GW`} percent={`−${gasDerate}%`}
+              color="text-orange-400" sub={`of ${(caisoGasMw / 1000).toFixed(1)} GW ${hubLabel} gas fleet`} />
           </div>
-          <SliderField label="Renewables Output" value={renewPct} onChange={setRenewPct} min={0} max={100} step={5}
-            display={`${renewPct}%`} color="text-teal-400" sub="wind & solar CF applied to real nameplate MW" />
+          <SliderField label="Renewables Output" value={renewPct} onChange={setRenewPct} min={0} max={110} step={1}
+            absolute={`${(caisoRenewMw / 1000).toFixed(1)} GW`} percent={`${renewPct}%`}
+            color="text-teal-400" sub={`wind ${(windCf * 100).toFixed(0)}% CF / solar ${(solarCf * 100).toFixed(0)}% CF, ERCOT-calibrated`} />
         </CardContent>
       </Card>
 
@@ -568,7 +662,8 @@ function CaisoPanel(props: {
             Wind/solar available MW = nameplate × capacity factor slider. Gas available MW = nameplate × (1 − derate).
             Nuclear/hydro/geothermal/biomass/storage use fixed typical availability factors (95% / 40% / 90% / 85% / 90%)
             — not derived from real dispatch data, unlike ERCOT's PyPSA OPF. Reserve margin = (available − stressed load) / stressed load.
-            This is a system-wide adequacy screen, not a locational price signal.
+            Renewables/Gas Derate slider calibration (default, ceilings) is ERCOT-derived (ercot_fuel_mix, thermal_params)
+            since no equivalent CAISO hourly dataset exists yet. This is a system-wide adequacy screen, not a locational price signal.
           </p>
         </CardContent>
       </Card>
@@ -580,17 +675,21 @@ function CaisoPanel(props: {
 
 function SliderField(props: {
   label: string; value: number; onChange: (v: number) => void;
-  min: number; max: number; step: number; display: string; color: string; sub?: string;
+  min: number; max: number; step: number;
+  absolute: string; percent?: string; color: string; sub?: string;
 }) {
-  const { label, value, onChange, min, max, step, display, color, sub } = props;
+  const { label, value, onChange, min, max, step, absolute, percent, color, sub } = props;
   return (
     <div>
       <div className="flex justify-between text-xs mb-1">
         <span className="text-muted-foreground">{label}</span>
-        <span className={`font-mono ${color}`}>{display}</span>
+        <span className={`font-mono font-semibold ${color}`}>{absolute}</span>
       </div>
       <Slider min={min} max={max} step={step} value={[value]} onValueChange={([v]) => onChange(v)} />
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      <div className="flex justify-between items-center mt-1">
+        {percent ? <span className={`text-xs font-mono ${color}`}>{percent}</span> : <span />}
+        {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+      </div>
     </div>
   );
 }
