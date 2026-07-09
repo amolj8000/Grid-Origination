@@ -3,6 +3,9 @@ name: Pushing to external GitHub repos from main agent
 description: How to push/update external GitHub repos when local git init/commit are blocked for the main agent, including for scratch dirs outside the project.
 ---
 
+## Account
+GitHub username is `amol-javahire` (changed from `amolj8000` as of 2026-07-09). Old repo URLs like `github.com/amolj8000/<repo>` still redirect, but use the new username going forward for API calls (owner field) and git remote URLs. Known repos: `Grid-Origination` (grid-platform/monorepo), `modelling-aeso-congestion` (AESO standalone snapshot).
+
 ## Constraint
 `git init`, `git commit`, and `git push --force` are blocked for the main agent by the sandbox's destructive-git-command guard — this applies globally, not just inside the project repo (e.g. a fresh scratch dir under `/tmp` is blocked too).
 
