@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useListCandidates, type Candidate } from "@workspace/api-client-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -13,6 +14,7 @@ import {
 
 interface PriceWaterfall {
   marketRefDa:       number;
+  marketRefSource:   "caller_override" | "forward_curve" | "historical_avg";
   captureRatio:      number;
   rawCapturePrice:   number;
   shapeDiscount:     number;
@@ -209,6 +211,30 @@ export default function PpaCalculator() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
+  // Forward curve integration
+  const [useForwardCurve, setUseForwardCurve] = useState(true);
+  const { data: fwdCurveData } = useQuery<{
+    avgSyntheticPowerFwd: number | null;
+    avgPowerFwd: number | null;
+    asOfDate: string | null;
+    heatRate: number;
+    promptForward: number | null;
+  }>({
+    queryKey: ["forward-curve-ppa"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE_PATH}/api/gas-prices/forward-curve?node=HB_HOUSTON&heat_rate=8.5`);
+      if (!r.ok) throw new Error("forward-curve unavailable");
+      return r.json();
+    },
+    staleTime: 30 * 60_000,
+  });
+
+  // Synthetic forward power price derived from gas strip × heat rate
+  const fwdPowerAvgMwh = useMemo(() => {
+    if (!useForwardCurve) return null;
+    return fwdCurveData?.avgSyntheticPowerFwd ?? null;
+  }, [useForwardCurve, fwdCurveData]);
+
   // Candidates
   const { data: candidatesData, isLoading: candidatesLoading } = useListCandidates(
     selectedIso ? { market: selectedIso as "ERCOT" | "CAISO", limit: 2000 } : { limit: 0 }
@@ -281,6 +307,10 @@ export default function PpaCalculator() {
         availabilityFactor:  String(availability),
         recRevenueMwh:       String(recRevenue),
       });
+      // Pass synthetic forward power price when toggle is on and data is available
+      if (fwdPowerAvgMwh != null) {
+        params.set("forwardPowerPriceMwh", String(fwdPowerAvgMwh));
+      }
       const res = await fetch(`${BASE_PATH}/api/ppa-npv?${params}`);
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       setResult(await res.json() as PpaNpvResult);
@@ -289,7 +319,7 @@ export default function PpaCalculator() {
     } finally {
       setLoading(false);
     }
-  }, [candidateId, strike, term, wacc, escalation, basisAdj, curtailment, shapeDsc, availability, recRevenue]);
+  }, [candidateId, strike, term, wacc, escalation, basisAdj, curtailment, shapeDsc, availability, recRevenue, fwdPowerAvgMwh]);
 
   const selectCls = "w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:opacity-40 disabled:cursor-not-allowed";
   const chartData = result?.annualCashflowsP50M.map(r => ({ year: `Y${r.year}`, cashflow: r.cashflowM })) ?? [];
@@ -303,6 +333,33 @@ export default function PpaCalculator() {
           are editable for stress testing; market price spread auto-derives from the financial quality score.
         </p>
       </div>
+
+      {/* ── Forward curve banner ── */}
+      {fwdCurveData?.avgSyntheticPowerFwd != null && (
+        <div className="flex items-center gap-3 rounded-lg border border-teal-700/50 bg-teal-900/20 px-4 py-3">
+          <Zap className="h-4 w-4 text-teal-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="text-xs text-slate-300">
+              <span className="font-semibold text-teal-300">Gas Forward Strip loaded</span>
+              {" — "}synthetic power price:{" "}
+              <span className="font-mono text-amber-300">${fwdCurveData.avgSyntheticPowerFwd.toFixed(2)}/MWh</span>
+              {" "}(HH strip × 8.5 HR, {fwdCurveData.heatRate} MMBtu/MWh)
+              {fwdCurveData.asOfDate && (
+                <span className="text-slate-500"> · curve as of {fwdCurveData.asOfDate}</span>
+              )}
+            </span>
+          </div>
+          <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={useForwardCurve}
+              onChange={e => setUseForwardCurve(e.target.checked)}
+              className="accent-teal-500 h-3.5 w-3.5"
+            />
+            Use in NPV
+          </label>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* ── Left panel ── */}
@@ -584,7 +641,17 @@ export default function PpaCalculator() {
                 {/* Price waterfall */}
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Revenue Build-Up ($/MWh)</h3>
-                  <WaterfallRow label="Market DA Reference" value={`$${result.priceWaterfall.marketRefDa}`} note="2024 avg" />
+                  <WaterfallRow
+                    label="Market DA Reference"
+                    value={`$${result.priceWaterfall.marketRefDa}`}
+                    note={
+                      result.priceWaterfall.marketRefSource === "forward_curve"
+                        ? "gas strip × HR"
+                        : result.priceWaterfall.marketRefSource === "caller_override"
+                        ? "user override"
+                        : "2024 hist avg"
+                    }
+                  />
                   <WaterfallRow label={`× Capture Ratio (${(result.priceWaterfall.captureRatio * 100).toFixed(1)}%)`}
                     value={`$${result.priceWaterfall.rawCapturePrice.toFixed(2)}`} note="tech × market" indent />
                   <WaterfallRow label={`− Shape Discount (${(result.priceWaterfall.shapeDiscount * 100).toFixed(1)}%)`}

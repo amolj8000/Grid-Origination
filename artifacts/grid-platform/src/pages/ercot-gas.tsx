@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,7 +10,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   Legend, ResponsiveContainer, ReferenceLine, Scatter, ScatterChart, Cell,
 } from "recharts";
-import { Loader2, TrendingUp, TrendingDown, Zap, Flame, AlertTriangle } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Zap, Flame, AlertTriangle, Upload, X, CheckCircle2 } from "lucide-react";
 
 // ── palette ───────────────────────────────────────────────────────────────
 const C = {
@@ -51,6 +51,8 @@ interface HeatRateRow {
 interface ForwardRow {
   label: string; dateKey: string; type: "forward";
   forwardPrice: number; source: string;
+  syntheticPowerPrice: number;
+  seasonalMult: number;
   sparkBase: number | null; sparkHigh: number | null; sparkLow: number | null;
 }
 interface HistoricalSpotRow {
@@ -64,6 +66,7 @@ interface ForwardCurveResponse {
   latestSpot: number | null;
   promptForward: number | null;
   avgPowerFwd: number | null;
+  avgSyntheticPowerFwd: number | null;
   curveShape: "contango" | "backwardation" | "flat";
   curveSteepness: number;
   sourceCounts: Record<string, number>;
@@ -105,12 +108,69 @@ function CustomTooltip({ active, payload, label, unit = "" }: {
   );
 }
 
+// ── CSV parser for Bloomberg / CME strip paste ─────────────────────────────
+const MON_ABB: Record<string, number> = {
+  jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+  jul:7, aug:8, sep:9, oct:10, nov:11, dec:12,
+};
+
+function parseCsvStrip(text: string): { deliveryMonth: string; settlePrice: number }[] {
+  const rows: { deliveryMonth: string; settlePrice: number }[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    // Split on comma, tab, pipe, or 2+ spaces
+    const parts = line.split(/[,\t|]|\s{2,}/).map(p => p.trim()).filter(Boolean);
+    if (parts.length < 2) continue;
+
+    const [col1, col2] = parts;
+    // Parse price — try second column first, then last column
+    const priceStr = col2 ?? parts[parts.length - 1];
+    const price = parseFloat(priceStr.replace(/[^0-9.-]/g, ""));
+    if (isNaN(price) || price <= 0 || price > 50) continue;
+
+    // Parse delivery month from col1
+    // Formats: "Aug-26", "Aug 2026", "AUG26", "2026-08", "2026-08-01"
+    let deliveryMonth: string | null = null;
+    const c1 = col1.replace(/\s+/g, "").toLowerCase();
+
+    // ISO date
+    const isoMatch = c1.match(/^(\d{4})-?(\d{2})(-\d{2})?$/);
+    if (isoMatch) {
+      deliveryMonth = `${isoMatch[1]}-${isoMatch[2]}-01`;
+    }
+    if (!deliveryMonth) {
+      // Mon-YY or Mon-YYYY or MonYY or Mon YYYY
+      const monMatch = col1.replace(/\s+/g, "").toLowerCase().match(/^([a-z]{3})-?(\d{2,4})$/);
+      if (monMatch) {
+        const mon = MON_ABB[monMatch[1]];
+        if (mon) {
+          const yr = monMatch[2].length === 2 ? `20${monMatch[2]}` : monMatch[2];
+          deliveryMonth = `${yr}-${String(mon).padStart(2, "0")}-01`;
+        }
+      }
+    }
+    if (!deliveryMonth) continue;
+
+    rows.push({ deliveryMonth, settlePrice: price });
+  }
+  return rows;
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────
 export default function ErcotGasPage() {
   // State
   const [node,     setNode]     = useState("HB_HOUSTON");
   const [heatRate, setHeatRate] = useState(8.5);
   const [gasHub,   setGasHub]   = useState("henry_hub");
+
+  // Upload strip state
+  const [uploadOpen,   setUploadOpen]   = useState(false);
+  const [csvText,      setCsvText]      = useState("");
+  const [uploadStatus, setUploadStatus] = useState<"idle"|"parsing"|"uploading"|"done"|"error">("idle");
+  const [uploadMsg,    setUploadMsg]    = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const queryClient = useQueryClient();
 
   // Queries
   const { data: gasPrices, isLoading: gasLoading } = useQuery<GasRow[]>({
@@ -148,6 +208,42 @@ export default function ErcotGasPage() {
     queryFn: () => apiFetch(`/api/gas-prices/forward-curve?node=${node}&heat_rate=${heatRate}`),
     staleTime: 30 * 60_000,
   });
+
+  // Upload Bloomberg/CME strip handler
+  async function handleUpload() {
+    if (!csvText.trim()) return;
+    setUploadStatus("parsing");
+    setUploadMsg("");
+    const rows = parseCsvStrip(csvText);
+    if (rows.length === 0) {
+      setUploadStatus("error");
+      setUploadMsg("No valid rows parsed. Check format: 'Aug-26, 3.250' or '2026-08, 3.250'");
+      return;
+    }
+    setUploadStatus("uploading");
+    try {
+      const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const res = await fetch(`${BASE}/api/gas-prices/forward-curve/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, source: "user_csv" }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error((e as { message?: string }).message ?? `HTTP ${res.status}`);
+      }
+      const json = await res.json() as { upserted: number; asOfDate: string };
+      setUploadStatus("done");
+      setUploadMsg(`✓ ${json.upserted} months uploaded as of ${json.asOfDate}`);
+      setCsvText("");
+      // Invalidate forward curve queries so charts refresh
+      await queryClient.invalidateQueries({ queryKey: ["forward-curve"] });
+      await queryClient.invalidateQueries({ queryKey: ["forward-curve-ppa"] });
+    } catch (err) {
+      setUploadStatus("error");
+      setUploadMsg(err instanceof Error ? err.message : "Upload failed");
+    }
+  }
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const priceHistory = useMemo(() => {
@@ -903,12 +999,75 @@ export default function ErcotGasPage() {
               />
               <span className="text-xs font-mono text-teal-400">{heatRate} MMBtu/MWh</span>
             </div>
-            {fwdData?.asOfDate && (
-              <Badge variant="outline" className="text-xs text-muted-foreground ml-auto">
-                Curve as of {fwdData.asOfDate}
-              </Badge>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {fwdData?.asOfDate && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  Curve as of {fwdData.asOfDate}
+                  {(fwdData.sourceCounts["user_csv"] ?? 0) > 0 && (
+                    <span className="ml-1 text-teal-400">· Bloomberg</span>
+                  )}
+                </Badge>
+              )}
+              <button
+                onClick={() => { setUploadOpen(v => !v); setUploadStatus("idle"); setUploadMsg(""); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition-colors"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload Strip
+              </button>
+            </div>
           </div>
+
+          {/* ── Upload expand panel ── */}
+          {uploadOpen && (
+            <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Upload className="h-3.5 w-3.5 text-teal-400" />
+                  Paste Bloomberg / CME Natural Gas Strip
+                </p>
+                <button onClick={() => setUploadOpen(false)} className="text-slate-500 hover:text-slate-300">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Paste two columns: <span className="font-mono text-slate-400">Month, Price</span>.
+                Accepted formats: <span className="font-mono">Aug-26, 3.250</span> · <span className="font-mono">AUG26  3.250</span> · <span className="font-mono">2026-08, 3.250</span>
+                {" "}(comma, tab, pipe, or 2+ spaces as delimiter). One row per line. Upserts today as <em>user_csv</em> source.
+              </p>
+              <textarea
+                ref={textareaRef}
+                value={csvText}
+                onChange={e => { setCsvText(e.target.value); setUploadStatus("idle"); setUploadMsg(""); }}
+                placeholder={"Aug-26\t3.250\nSep-26\t3.180\nOct-26\t3.350\n..."}
+                rows={8}
+                spellCheck={false}
+                className="w-full font-mono text-[11px] bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+              />
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleUpload}
+                  disabled={!csvText.trim() || uploadStatus === "uploading"}
+                  className="px-4 py-1.5 rounded-md bg-teal-600 hover:bg-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
+                >
+                  {uploadStatus === "uploading" ? "Uploading…" : uploadStatus === "parsing" ? "Parsing…" : "Upload Strip"}
+                </button>
+                {csvText.trim() && uploadStatus === "idle" && (
+                  <span className="text-[11px] text-slate-500">
+                    {parseCsvStrip(csvText).length} rows parsed
+                  </span>
+                )}
+                {uploadStatus === "done" && (
+                  <span className="flex items-center gap-1 text-[11px] text-teal-400">
+                    <CheckCircle2 className="h-3.5 w-3.5" />{uploadMsg}
+                  </span>
+                )}
+                {uploadStatus === "error" && (
+                  <span className="text-[11px] text-red-400">{uploadMsg}</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* KPI row */}
           {fwdData && (
@@ -972,13 +1131,17 @@ export default function ErcotGasPage() {
                 {fwdData && (
                   <span className="ml-2">
                     Data: {Object.entries(fwdData.sourceCounts).map(([src, n]) => (
-                      <span key={src} className={`ml-1 text-[10px] px-1 rounded ${src === "model" ? "bg-slate-700 text-slate-400" : "bg-teal-900 text-teal-300"}`}>
-                        {src === "eia_steo" ? "EIA STEO" : src === "fred" ? "FRED" : "model"} {n}mo
+                      <span key={src} className={`ml-1 text-[10px] px-1 rounded ${
+                        src === "user_csv" ? "bg-teal-900 text-teal-300" :
+                        src === "model" ? "bg-slate-700 text-slate-400" :
+                        "bg-blue-900/40 text-blue-300"
+                      }`}>
+                        {src === "user_csv" ? "📋 Bloomberg" : src === "eia_steo" ? "EIA STEO" : src === "fred" ? "FRED" : "model"} {n}mo
                       </span>
                     ))}
-                    {(fwdData.sourceCounts["model"] ?? 0) > 0 && (
+                    {(fwdData.sourceCounts["model"] ?? 0) > 0 && !fwdData.sourceCounts["user_csv"] && (
                       <span className="ml-1 text-[10px] text-muted-foreground">
-                        (model months: seasonal NYMEX shape + EIA AEO $3.50 mean-reversion)
+                        (seasonal shape + $3.50 mean-reversion — upload Bloomberg strip to override)
                       </span>
                     )}
                   </span>
@@ -1066,13 +1229,60 @@ export default function ErcotGasPage() {
             </CardContent>
           </Card>
 
+          {/* Synthetic power forward chart */}
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Synthetic Power Forward Strip — {node} (Gas × HR {heatRate})</CardTitle>
+              <CardDescription>
+                Projected power settlement price = HH gas forward × {heatRate} MMBtu/MWh heat rate × seasonal ERCOT shape.
+                No Bloomberg power forward subscription required — derived entirely from the gas strip.
+                {fwdData?.avgSyntheticPowerFwd && (
+                  <span className="ml-1 font-medium text-teal-400">
+                    Strip avg: ${fwdData.avgSyntheticPowerFwd.toFixed(2)}/MWh
+                  </span>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {fwdLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-teal-400" /></div>
+              ) : fwdData?.forwardStrip.length ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart
+                    data={fwdData.forwardStrip.map(r => ({
+                      label: r.label,
+                      powerFwd: r.syntheticPowerPrice,
+                      gasFwd: r.forwardPrice,
+                      fuelCost: r.forwardPrice * heatRate,
+                    }))}
+                    margin={{ top: 5, right: 20, bottom: 5, left: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} interval={3} angle={-30} textAnchor="end" height={40} />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={v => `$${v}`} domain={["auto","auto"]} />
+                    <RechartsTooltip content={<CustomTooltip unit="/MWh" />} />
+                    <Legend />
+                    <Bar dataKey="powerFwd" name="Synthetic Power Fwd (seasonal)" fill={C.teal} opacity={0.85} radius={[3,3,0,0]} />
+                    <Line dataKey="fuelCost" name="Flat Gas × HR (no seasonal adj)" stroke={C.amber} dot={false} strokeWidth={1.5} strokeDasharray="5 3" connectNulls />
+                    {fwdData.avgPowerFwd && (
+                      <ReferenceLine y={fwdData.avgPowerFwd} stroke="#64748b" strokeDasharray="4 4"
+                        label={{ value: `Hist avg $${fwdData.avgPowerFwd.toFixed(0)}`, position: "right", fontSize: 9, fill: "#64748b" }} />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-muted-foreground text-sm text-center py-8">No forward strip loaded</p>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Forward strip table */}
           <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-base">Forward Strip Detail — Monthly Settlements</CardTitle>
               <CardDescription>
-                NYMEX Henry Hub model strip. Settle price and implied {node} spark spread at HR {heatRate}.
-                Power proxy = trailing 3-month average {node} DA price
+                HH settle price, synthetic power forward (gas × HR × seasonal adj), and spark sensitivity.
+                Power proxy for spark = trailing 3-month {node} DA avg
                 {fwdData?.avgPowerFwd ? ` ($${fwdData.avgPowerFwd.toFixed(2)}/MWh)` : ""}.
               </CardDescription>
             </CardHeader>
@@ -1083,6 +1293,8 @@ export default function ErcotGasPage() {
                     <tr className="border-b border-border text-muted-foreground">
                       <th className="text-left py-2 pr-3">Month</th>
                       <th className="text-right py-2 pr-3">HH Settle</th>
+                      <th className="text-right py-2 pr-3">Synth Power</th>
+                      <th className="text-right py-2 pr-3">Src</th>
                       <th className="text-right py-2 pr-3">Gas −$1</th>
                       <th className="text-right py-2 pr-3">Base Spark</th>
                       <th className="text-right py-2">Gas +$1</th>
@@ -1093,6 +1305,16 @@ export default function ErcotGasPage() {
                       <tr key={i} className="border-b border-border/30 hover:bg-muted/20">
                         <td className="py-1 pr-3 font-mono">{r.label}</td>
                         <td className="py-1 pr-3 text-right text-amber-400">${r.forwardPrice.toFixed(3)}</td>
+                        <td className="py-1 pr-3 text-right text-teal-400 font-semibold">${r.syntheticPowerPrice.toFixed(2)}</td>
+                        <td className="py-1 pr-3 text-right">
+                          <span className={`text-[10px] px-1 rounded ${
+                            r.source === "user_csv" ? "bg-teal-900/60 text-teal-300" :
+                            r.source === "model"   ? "bg-slate-700 text-slate-400" :
+                            "bg-blue-900/40 text-blue-300"
+                          }`}>
+                            {r.source === "user_csv" ? "📋 Upload" : r.source === "model" ? "model" : r.source === "eia_steo" ? "EIA" : r.source}
+                          </span>
+                        </td>
                         <td className={`py-1 pr-3 text-right ${r.sparkHigh != null && r.sparkHigh > 0 ? "text-green-400" : "text-red-400"}`}>
                           {r.sparkHigh != null ? `$${r.sparkHigh.toFixed(1)}` : "—"}
                         </td>
