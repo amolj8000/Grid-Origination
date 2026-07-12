@@ -169,11 +169,11 @@ def _autostart_dispatch_seeder() -> None:
 
 @app.on_event("startup")
 async def startup_event():
-    """Kick off ERCOT OPF pre-computation and dispatch gap-fill in the background."""
+    """Kick off ERCOT OPF pre-computation on startup."""
     import asyncio
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _precompute_ercot_opf)
-    loop.run_in_executor(None, _autostart_dispatch_seeder)
+    # Dispatch seeder auto-start disabled — trigger manually via POST /pypsa/admin/seed-dispatch
 
 
 @app.get("/opf/default")
