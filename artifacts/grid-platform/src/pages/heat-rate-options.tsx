@@ -9,7 +9,7 @@ import {
   Tooltip as RTooltip, ResponsiveContainer, ReferenceLine,
   AreaChart, Area, Legend,
 } from "recharts";
-import { Sigma, Flame, Info } from "lucide-react";
+import { Sigma, Info, BookOpen, FlaskConical, Target } from "lucide-react";
 
 // ── Bachelier (Normal) option model ──────────────────────────────────────────
 // Industry-standard for spark spread options: handles negative forwards correctly.
@@ -897,6 +897,122 @@ export default function HeatRateOptions() {
             <p className="text-xs text-muted-foreground mt-1.5">
               Data: Henry Hub (FRED DHHNGSP) + ERCOT {hub} DA price (CDR Report 13060). Monthly averages.
             </p>
+          </div>
+
+          {/* ── Methodology section ─────────────────────────────────────── */}
+          <div className="space-y-4 pt-2">
+
+            {/* Data sources note */}
+            <div className="bg-slate-800/30 border border-slate-700/30 rounded-xl p-4">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-slate-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  <strong className="text-slate-400">Data sources:</strong>{" "}
+                  Gas prices from FRED DHHNGSP (Henry Hub daily spot, Federal Reserve Bank of St. Louis — public,
+                  no key). Power prices from ERCOT CDR Report 13060 (DA hub prices — DAMLZHBSPP annual XLSX files,
+                  public, no auth required). Both datasets are updated monthly; the vol estimate uses all available
+                  months from January 2024 onward. Spark-spread volatility σ_abs is computed as the annualised
+                  standard deviation of monthly first-differences of (P&nbsp;−&nbsp;HR×G) at HR=9, in $/MWh — this
+                  is the correct input to the Bachelier model (not log-returns, since spreads can go negative).
+                </p>
+              </div>
+            </div>
+
+            {/* 3-column explainer */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+              {/* What This Does */}
+              <Card className="bg-slate-800/50 border-slate-700/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-1.5 text-slate-100">
+                    <BookOpen className="h-4 w-4 text-amber-400" />
+                    What This Tool Does
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-slate-400 space-y-2">
+                  <p>
+                    Prices <span className="text-slate-200 font-medium">heat rate call and put options</span> — the
+                    right (not obligation) to convert natural gas into electricity at a specified heat rate.
+                    Payoff = max(0, P&nbsp;−&nbsp;HR&nbsp;×&nbsp;G) for a call. These are the standard instrument
+                    used to value and hedge <span className="text-slate-200 font-medium">tolling agreements</span>,
+                    peaker plant operating margins, and structured gas-power basis risk.
+                  </p>
+                  <p>
+                    The pricer uses the <span className="text-slate-200 font-medium">Bachelier (normal) model</span>,
+                    the industry standard for spread options. Unlike Black-Scholes, Bachelier assumes normally
+                    distributed absolute price changes (not log-returns), which correctly handles the case where
+                    the spark spread is negative — common during periods of high gas prices or low power demand.
+                  </p>
+                  <p>
+                    All five Greeks (Δ, Γ, ν, Θ, ρ) are computed analytically from the closed-form Bachelier
+                    solution. The heat rate matrix shows premiums across 8 strike heat rates × 6 expiries at a glance.
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Use Cases */}
+              <Card className="bg-slate-800/50 border-slate-700/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-1.5 text-slate-100">
+                    <Target className="h-4 w-4 text-teal-400" />
+                    Use Cases
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-slate-400 space-y-0">
+                  <ul className="space-y-2 list-none">
+                    {[
+                      ["Gas Marketer / Midstream", "Price a tolling agreement on an ERCOT peaker. Set strike HR to the plant's design heat rate, expiry to the contract term, volume to the facility's MW capacity. The call premium is the fair-value toll."],
+                      ["Peaker Operator / IPP", "Stress-test your plant margin under different gas and power scenarios. Toggle the gas/power overrides to model $5 gas + $40 power vs $2.50 gas + $60 power — compare option values and Greeks."],
+                      ["Power Trader (Corp. Desk)", "Replicate a real option embedded in a PPA or capacity contract. The payoff profile chart shows where you need the spark spread to settle to cover the premium cost."],
+                      ["Walmart Energy Procurement", "Assess the incremental option value of a tolling/capacity payment in a supply contract. Compare the intrinsic value (current spark spread × volume) against the time value paid — i.e., how much you're paying for optionality."],
+                      ["Structurer / Quant", "Read off delta-hedging ratios for a portfolio of heat rate options across multiple ERCOT hubs. The heat rate matrix gives a full premium surface to calibrate an internal vol model."],
+                    ].map(([role, desc]) => (
+                      <li key={role} className="border-l-2 border-teal-500/30 pl-2 pb-2 last:pb-0">
+                        <p className="text-slate-200 font-medium leading-tight">{role}</p>
+                        <p className="text-slate-400 mt-0.5">{desc}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* Key Assumptions & Formulas */}
+              <Card className="bg-slate-800/50 border-slate-700/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-1.5 text-slate-100">
+                    <FlaskConical className="h-4 w-4 text-purple-400" />
+                    Key Assumptions & Formulas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-slate-400 space-y-2">
+                  <div>
+                    <p className="text-slate-200 font-medium mb-1">Bachelier Call Formula</p>
+                    <p className="font-mono text-slate-300 bg-slate-900/60 rounded px-2 py-1.5 text-[11px] leading-snug">
+                      C = e<sup>−rT</sup> [ F·Φ(d) + σ√T·φ(d) ]<br />
+                      d = F / (σ√T)<br />
+                      F = fwdPower − strikeHR × fwdGas
+                    </p>
+                    <p className="text-slate-500 mt-1">
+                      Where σ is absolute vol ($/MWh ann.), Φ = normal CDF, φ = normal PDF, K=0 (ATM spread).
+                    </p>
+                  </div>
+                  {[
+                    ["Spread forward (F)", "Latest month's avg DA hub price minus (strikeHR × Henry Hub spot). No term structure — flat curve assumed unless overridden."],
+                    ["Volatility (σ_abs)", "Annualised std dev of monthly Δ(P − 9×G) in $/MWh, computed from Jan 2024 onward. Base estimate at HR=9; scales with the same σ regardless of chosen HR (reasonable approximation for nearby strikes)."],
+                    ["Expiry (T)", "Time in years = months ÷ 12. Settlement assumed at end of period — no path dependency."],
+                    ["Contract volume", "MW × hours/day × (30.44 days/month) × months. On-peak = 16h/day, flat = 24h/day."],
+                    ["No conveyance cost", "Transmission, line losses, imbalance, and scheduling fees are excluded. All prices are hub-level DA averages."],
+                    ["Black-Scholes vs Bachelier", "B-S underprices OTM spread options when spreads can go negative. Bachelier is preferred by ISDA for spark/dark/quark spread options and commodity crack spreads."],
+                  ].map(([k, v]) => (
+                    <div key={k}>
+                      <span className="text-slate-200 font-medium">{k}: </span>
+                      <span>{v}</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+            </div>
           </div>
 
           </>
