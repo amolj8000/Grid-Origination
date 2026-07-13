@@ -180,18 +180,25 @@ function buildTechBreakdown(units: MeritOrderUnit[]) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function GeneratorsPage() {
-  const [iso]        = useState<"ERCOT">("ERCOT");
-  const [gasPrice, setGasPrice] = useState(2.50);
-  const [co2Price, setCo2Price] = useState(0);
-  const [demandMw, setDemandMw] = useState(18000);
+  const [iso]          = useState<"ERCOT">("ERCOT");
+  // Gas price: Henry Hub + Waha basis
+  const [hhPrice,   setHhPrice]   = useState(3.20);   // Henry Hub $/MMBtu
+  const [wahaBasis, setWahaBasis] = useState(-0.50);  // Waha vs HH spread
+  const [co2Price,  setCo2Price]  = useState(0);
+  const [systemLoadGw, setSystemLoadGw] = useState(60); // Total ERCOT system load GW
   const [techFilter, setTechFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [fuelTab, setFuelTab] = useState<FuelTab>("gas");
 
+  // Derived gas / demand values
+  const wahaPrice        = Math.max(0.10, hhPrice + wahaBasis);
+  const renewableOffsetMw = 35_000; // ~35 GW estimated wind+solar average output
+  const thermalNetLoadMw  = Math.max(0, systemLoadGw * 1_000 - renewableOffsetMw);
+
   // ── API calls ──────────────────────────────────────────────────────────────
   const { data: meritData, isLoading: loadingMerit } = useQuery<MeritOrderResp>({
-    queryKey: ["merit-order", iso, gasPrice, co2Price],
-    queryFn:  () => fetch(`/api/generators/merit-order?iso=${iso}&gas_price=${gasPrice}&co2_price=${co2Price}`).then(r => r.json()),
+    queryKey: ["merit-order", iso, wahaPrice, co2Price],
+    queryFn:  () => fetch(`/api/generators/merit-order?iso=${iso}&gas_price=${wahaPrice}&co2_price=${co2Price}`).then(r => r.json()),
     staleTime: 5 * 60_000,
   });
 
@@ -222,12 +229,16 @@ export default function GeneratorsPage() {
   const techBreakdown = useMemo(() =>
     meritData ? buildTechBreakdown(meritData.units) : [], [meritData]);
 
-  // Clearing price: interpolate where cumulative_mw crosses demandMw
+  // Clearing price: interpolate where cumulative_mw crosses thermalNetLoadMw
   const clearingPrice = useMemo(() => {
     if (!meritData) return null;
-    const unit = meritData.units.find(u => u.end_mw >= demandMw);
+    const unit = meritData.units.find(u => u.end_mw >= thermalNetLoadMw);
+    // If net load exceeds full thermal stack → scarcity
+    if (!unit && thermalNetLoadMw > 0) return null;
     return unit ? unit.marginal_cost : null;
-  }, [meritData, demandMw]);
+  }, [meritData, thermalNetLoadMw]);
+
+  const isScarcity = meritData ? thermalNetLoadMw > (meritData.total_thermal_mw ?? 0) : false;
 
   // Filtered table
   const tableRows = useMemo(() => {
@@ -243,13 +254,13 @@ export default function GeneratorsPage() {
         const vom    = parseFloat(g.vom_per_mwh ?? "0");
         const mw     = parseFloat(g.nameplate_mw);
         const efor   = parseFloat(g.forced_outage_rate ?? "0.05");
-        const fuelCost = g.implied_fuel_cost_per_mmb ? parseFloat(g.implied_fuel_cost_per_mmb) : gasPrice;
+        const fuelCost = g.implied_fuel_cost_per_mmb ? parseFloat(g.implied_fuel_cost_per_mmb) : wahaPrice;
         const mc     = hr * fuelCost + vom;
         const spark  = g.fuel_primary === "NG" && clearingPrice ? clearingPrice - mc : null;
         return { ...g, mc: Math.round(mc * 100) / 100, spark, mw, efor };
       })
       .sort((a, b) => a.mc - b.mc);
-  }, [allGenerators, techFilter, search, gasPrice, clearingPrice]);
+  }, [allGenerators, techFilter, search, wahaPrice, clearingPrice]);
 
   // KPI data
   const totalThermalMw = summary?.byTechnology
@@ -290,8 +301,10 @@ export default function GeneratorsPage() {
         {[
           { icon: Flame,        label: "Total Thermal Fleet",  value: `${Math.round(totalThermalMw / 1000)} GW`,    sub: "ERCOT operating",            color: C.orange },
           { icon: Activity,     label: "CCGT Fleet",           value: `${Math.round(parseInt(ccgtMw) / 1000)} GW`,  sub: `Avg HR ${avgCCGTHR} MMBtu/MWh`, color: C.teal   },
-          { icon: BarChart3,    label: "Clearing Price",       value: clearingPrice ? `$${clearingPrice.toFixed(2)}/MWh` : "—",
-                                                                sub: `at ${(demandMw/1000).toFixed(0)} GW demand`,  color: C.amber  },
+          { icon: BarChart3,    label: "Clearing Price",
+            value: isScarcity ? "SCARCITY" : clearingPrice ? `$${clearingPrice.toFixed(2)}/MWh` : "—",
+            sub: isScarcity ? "Net load exceeds thermal fleet" : `${systemLoadGw} GW load · ${Math.round(thermalNetLoadMw/1000)} GW net thermal`,
+            color: isScarcity ? C.red : C.amber },
           { icon: TrendingDown, label: "Coal at Risk",         value: `${Math.round(parseInt(coalMw) / 1000)} GW`,  sub: "steam / lignite fleet",      color: C.red    },
         ].map(k => (
           <Card key={k.label} className="bg-slate-800/50 border-slate-700/50">
@@ -312,62 +325,107 @@ export default function GeneratorsPage() {
       {/* Controls */}
       <Card className="bg-slate-800/50 border-slate-700/50">
         <CardContent className="pt-4 pb-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+
+            {/* Henry Hub Price */}
             <div>
               <div className="flex items-center justify-between mb-2 text-xs">
-                <span className="text-slate-400 flex items-center gap-1.5"><Flame className="h-3 w-3 text-orange-400" /> Waha Gas Price</span>
-                <span className="font-bold text-orange-400">${gasPrice.toFixed(2)}/MMBtu</span>
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <Flame className="h-3 w-3 text-orange-400" /> Henry Hub
+                </span>
+                <span className="font-bold text-orange-400">${hhPrice.toFixed(2)}/MMBtu</span>
               </div>
-              <Slider value={[gasPrice]} onValueChange={([v]: number[]) => setGasPrice(Math.round(v * 20) / 20)}
-                min={1.00} max={8.00} step={0.25} />
+              <Slider value={[hhPrice]} onValueChange={([v]: number[]) => setHhPrice(Math.round(v * 10) / 10)}
+                min={2.00} max={6.00} step={0.10} />
               <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-                <span>$1.00</span><span>$8.00</span>
+                <span>$2.00</span><span>$6.00</span>
               </div>
             </div>
+
+            {/* Waha Basis vs HH */}
             <div>
               <div className="flex items-center justify-between mb-2 text-xs">
-                <span className="text-slate-400 flex items-center gap-1.5"><Zap className="h-3 w-3 text-teal-400" /> CO₂ Price</span>
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <TrendingDown className="h-3 w-3 text-orange-300" /> Waha Basis vs HH
+                </span>
+                <span className={`font-bold ${wahaBasis >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {wahaBasis >= 0 ? "+" : ""}{wahaBasis.toFixed(2)} → <span className="text-orange-400">${wahaPrice.toFixed(2)}</span>
+                </span>
+              </div>
+              <Slider value={[wahaBasis]} onValueChange={([v]: number[]) => setWahaBasis(Math.round(v * 4) / 4)}
+                min={-15} max={5} step={0.25} />
+              <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
+                <span>-$15 (deep discount)</span><span>+$5 (premium)</span>
+              </div>
+            </div>
+
+            {/* CO2 Price */}
+            <div>
+              <div className="flex items-center justify-between mb-2 text-xs">
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <Zap className="h-3 w-3 text-teal-400" /> CO₂ Price
+                </span>
                 <span className="font-bold text-teal-400">${co2Price.toFixed(0)}/ton</span>
               </div>
-              <Slider value={[co2Price]} onValueChange={([v]: number[]) => setCo2Price(Math.round(v))}
-                min={0} max={50} step={5} />
+              <Slider value={[co2Price]} onValueChange={([v]: number[]) => setCo2Price(Math.round(v / 5) * 5)}
+                min={0} max={100} step={5} />
               <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-                <span>$0</span><span>$50/ton</span>
+                <span>$0</span>
+                <span className="text-slate-500">CA ~$28 · 2030 est. $65+</span>
+                <span>$100</span>
               </div>
             </div>
+
+            {/* ERCOT System Load */}
             <div>
               <div className="flex items-center justify-between mb-2 text-xs">
-                <span className="text-slate-400 flex items-center gap-1.5"><Activity className="h-3 w-3 text-amber-400" /> ERCOT Demand</span>
-                <span className="font-bold text-amber-400">{(demandMw / 1000).toFixed(0)} GW</span>
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <Activity className="h-3 w-3 text-amber-400" /> ERCOT System Load
+                </span>
+                <span className="font-bold text-amber-400">{systemLoadGw} GW</span>
               </div>
-              <Slider value={[demandMw]} onValueChange={([v]: number[]) => setDemandMw(Math.round(v / 1000) * 1000)}
-                min={5000} max={30000} step={1000} />
+              <Slider value={[systemLoadGw]} onValueChange={([v]: number[]) => setSystemLoadGw(Math.round(v))}
+                min={40} max={100} step={1} />
               <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
-                <span>5 GW</span><span>30 GW (full thermal)</span>
+                <span>40 GW</span>
+                <span className="text-slate-500">avg 60–85 · 2026 peak 92</span>
+                <span>100 GW</span>
               </div>
             </div>
           </div>
 
-          {clearingPrice && (
-            <div className="mt-4 flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="w-8 h-px border-t-2 border-dashed border-amber-400 inline-block" />
-                <span className="text-amber-300 font-medium">Implied clearing: ${clearingPrice.toFixed(2)}/MWh at {(demandMw/1000).toFixed(0)} GW</span>
+          {/* Computed summary row */}
+          <div className="mt-4 flex items-center gap-4 flex-wrap border-t border-slate-700/40 pt-3">
+            <div className="text-xs text-slate-500">
+              Net thermal load: <span className="text-amber-300 font-semibold">{Math.round(thermalNetLoadMw / 1000)} GW</span>
+              <span className="text-slate-600"> ({systemLoadGw} GW total − ~35 GW wind+solar est.)</span>
+            </div>
+            {isScarcity ? (
+              <div className="flex items-center gap-1.5 text-xs text-red-400 font-semibold">
+                <AlertTriangle className="h-3 w-3" />
+                Thermal net load exceeds fleet — ORDC scarcity pricing applies ($5,000/MWh cap)
               </div>
-              <div className="text-xs text-slate-500">
-                CCGT spark spread: <span className={clearingPrice - parseFloat(avgCCGTHR) * gasPrice - 4.5 > 0 ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
-                  ${(clearingPrice - parseFloat(avgCCGTHR || "7") * gasPrice - 4.5).toFixed(2)}/MWh
-                </span>
-              </div>
-              {co2Price > 0 && (
+            ) : clearingPrice ? (
+              <>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="w-8 h-px border-t-2 border-dashed border-amber-400 inline-block" />
+                  <span className="text-amber-300 font-medium">Clearing: ${clearingPrice.toFixed(2)}/MWh</span>
+                </div>
                 <div className="text-xs text-slate-500">
-                  CO₂ premium on coal vs CCGT: <span className="text-teal-400 font-medium">
-                    ${((0.95 - 0.40) * co2Price).toFixed(2)}/MWh
+                  CCGT spark spread:{" "}
+                  <span className={clearingPrice - parseFloat(avgCCGTHR || "7") * wahaPrice - 4.5 > 0 ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                    ${(clearingPrice - parseFloat(avgCCGTHR || "7") * wahaPrice - 4.5).toFixed(2)}/MWh
                   </span>
                 </div>
-              )}
-            </div>
-          )}
+                {co2Price > 0 && (
+                  <div className="text-xs text-slate-500">
+                    CO₂ premium coal vs CCGT:{" "}
+                    <span className="text-teal-400 font-medium">${((0.95 - 0.40) * co2Price).toFixed(2)}/MWh</span>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -454,11 +512,11 @@ export default function GeneratorsPage() {
                     />
                   )}
                   <ReferenceLine
-                    x={demandMw}
+                    x={thermalNetLoadMw}
                     stroke={C.amber}
                     strokeDasharray="4 3"
                     strokeWidth={1.5}
-                    label={{ value: `${(demandMw/1000).toFixed(0)} GW demand`, position: "top", fill: C.amber, fontSize: 10 }}
+                    label={{ value: `${Math.round(thermalNetLoadMw/1000)} GW net thermal`, position: "top", fill: C.amber, fontSize: 10 }}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -509,7 +567,7 @@ export default function GeneratorsPage() {
             {/* Spark spread insight */}
             {clearingPrice && (
               <div className="mt-4 pt-3 border-t border-slate-700/50 space-y-2">
-                <p className="text-xs font-semibold text-slate-300">Spark Spread @ ${gasPrice.toFixed(2)} Waha</p>
+                <p className="text-xs font-semibold text-slate-300">Spark Spread @ ${wahaPrice.toFixed(2)} Waha</p>
                 {techBreakdown.map(t => {
                   const spread = clearingPrice - t.avgCost;
                   return (
@@ -532,15 +590,17 @@ export default function GeneratorsPage() {
         <div className="bg-teal-900/20 border border-teal-500/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="h-4 w-4 text-teal-400" />
-            <span className="text-xs font-semibold text-teal-300">Marginal Setter at {(demandMw/1000).toFixed(0)} GW</span>
+            <span className="text-xs font-semibold text-teal-300">Marginal Setter at {Math.round(thermalNetLoadMw/1000)} GW net thermal</span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
-            {clearingPrice && meritData ? (() => {
-              const u = meritData.units.find(u => u.end_mw >= demandMw);
+            {isScarcity
+              ? `At ${systemLoadGw} GW total load (${Math.round(thermalNetLoadMw/1000)} GW thermal net), demand exceeds the ${Math.round((meritData?.total_thermal_mw ?? 0)/1000)} GW thermal fleet. ORDC scarcity pricing applies — up to $5,000/MWh.`
+              : clearingPrice && meritData ? (() => {
+              const u = meritData.units.find(u => u.end_mw >= thermalNetLoadMw);
               return u
-                ? `${u.plant_name} (${u.technology}, ${u.load_zone}) sets the clearing price at $${clearingPrice.toFixed(2)}/MWh. Heat rate ${u.design_heat_rate.toFixed(2)} × $${gasPrice.toFixed(2)} Waha + $${u.vom_per_mwh.toFixed(2)} VOM.`
-                : "No marginal unit found — demand exceeds thermal capacity.";
-            })() : "Set demand level with the slider above."}
+                ? `${u.plant_name} (${u.technology}, ${u.load_zone}) sets the clearing price at $${clearingPrice.toFixed(2)}/MWh. Heat rate ${u.design_heat_rate.toFixed(2)} × $${wahaPrice.toFixed(2)} Waha + $${u.vom_per_mwh.toFixed(2)} VOM.`
+                : "No marginal unit found.";
+            })() : "Adjust system load and gas sliders above."}
           </p>
         </div>
 
@@ -550,7 +610,7 @@ export default function GeneratorsPage() {
             <span className="text-xs font-semibold text-amber-300">Retirement Risk Screening</span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
-            At ${gasPrice.toFixed(2)}/MMBtu Waha gas:{" "}
+            At ${wahaPrice.toFixed(2)}/MMBtu Waha gas:{" "}
             {meritData ? (() => {
               const uneconomic = meritData.units.filter(u => u.marginal_cost > 60);
               const mw = uneconomic.reduce((s, u) => s + u.available_mw, 0);
