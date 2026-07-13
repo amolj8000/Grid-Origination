@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Battery, DollarSign, TrendingUp } from "lucide-react";
+import { Loader2, Battery, DollarSign, TrendingUp, BookOpen, Target, FlaskConical } from "lucide-react";
 import { useState } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
@@ -129,6 +129,88 @@ export default function PypsaBattery() {
         <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-xs">
           24-Snapshot OPF
         </Badge>
+      </div>
+
+      {/* Explainer panel */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-1.5">
+              <BookOpen className="h-4 w-4 text-emerald-400" />
+              What This Tool Does
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-muted-foreground space-y-2">
+            <p>
+              Simulates a <span className="text-foreground font-medium">battery storage asset on the ERCOT 5-bus network</span> using
+              two coupled stages. Phase 1 runs 24 separate Tier-1 OPFs — one per hour of day — using diurnal renewable and
+              load profiles to derive zone-specific LMPs that reflect curtailment and congestion at the storage bus.
+            </p>
+            <p>
+              Phase 2 runs a <span className="text-foreground font-medium">battery arbitrage LP</span> using a blended price
+              signal (50% real DA hub prices + 50% zone OPF LMP) to dispatch charge and discharge over a representative
+              24-hour cycle. The cyclic SOC constraint forces the battery to start and end at the same state of charge,
+              preventing unrealistic one-way arbitrage.
+            </p>
+            <p>
+              Revenue is settled at <span className="text-foreground font-medium">real historical DA hub prices</span> from ERCOT CDR reports — not model outputs — so the financial result is grounded in actual market data.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-1.5">
+              <Target className="h-4 w-4 text-amber-400" />
+              Use Cases for Walmart Energy
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-muted-foreground space-y-2">
+            <ul className="space-y-1.5 list-none">
+              {[
+                ["What is the realistic daily arbitrage revenue for a West Texas BESS co-located with solar?",
+                  "Set bus=WEST, node=HB_WEST, solarCF=25%, Jul 2025 → high curtailment depresses zone LMP vs hub."],
+                ["Does a 4-hour battery outperform a 2-hour at the Houston coast?",
+                  "Set bus=HOUSTON, MWh=2×MW (4h) vs MWh=1×MW (2h) — compare daily revenue and $/MW-day."],
+                ["How does zone basis affect battery siting?",
+                  "Compare Zone Basis KPI card across WEST / NORTH / HOUSTON — positive basis = zone earns more than hub."],
+                ["Is a BESS worth less in a high-curtailment summer week vs winter?",
+                  "Run Jul 2025 (high solar, more curtailment) vs Jan 2025 (low solar, tighter supply) at HB_WEST."],
+              ].map(([q, a]) => (
+                <li key={q} className="border-l-2 border-emerald-500/30 pl-2">
+                  <p className="text-foreground font-medium leading-tight">{q}</p>
+                  <p className="text-muted-foreground mt-0.5">{a}</p>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-1.5">
+              <FlaskConical className="h-4 w-4 text-purple-400" />
+              Key Assumptions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-muted-foreground space-y-1.5">
+            {[
+              ["Network", "ERCOT 5-bus Tier-1: NORTH, SOUTH, WEST, HOUSTON, PAN. Transmission limits are aggregate zonal."],
+              ["DA prices", "Real hourly DA prices from ERCOT CDR Report 13060 (Jan 2024–Dec 2025, 15 hub/zone nodes). Revenue is settled here."],
+              ["Zone LMP", "Per-hour OPF marginal price at the storage bus, driven by the wind CF, solar CF, and gas price inputs. Not used for settlement — used for dispatch signal."],
+              ["Dispatch signal", "Blended: 50% real DA price + 50% zone OPF LMP. Mimics a merchant that has both real market access and zonal congestion awareness."],
+              ["Cyclic SOC", "Battery SOC at hour 24 must equal SOC at hour 0. Prevents infinite single-direction arbitrage."],
+              ["Efficiency", "Round-trip efficiency applies symmetrically: charge takes in X MWh, discharge puts out X × η² MWh (split between charge and discharge stages)."],
+              ["Curtailment", "Hours where zone LMP < 0 (negative prices) result in renewable curtailment. Curtailment MWh = hourly curtailment_mw summed over 24h."],
+              ["Revenue", "arbitrage_revenue_$ = Σ (discharge_mw × DA_price − charge_mw × DA_price) across all hours. Daily = total ÷ 30 (avg month)."],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <span className="text-foreground font-medium">{k}: </span>
+                <span>{v}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Controls */}
