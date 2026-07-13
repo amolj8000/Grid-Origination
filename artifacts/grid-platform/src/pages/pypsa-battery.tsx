@@ -41,6 +41,8 @@ interface HourlyRow {
   da_price: number;
   rt_price: number;
   lmp: number;
+  effective_price: number;
+  curtailment_mw: number;
 }
 
 interface BatteryResult {
@@ -57,8 +59,11 @@ interface BatteryResult {
   "arbitrage_revenue_$": number;
   "daily_revenue_$": number;
   avg_lmp_at_bus: number;
+  avg_da_hub: number;
+  zone_basis_mwh: number;
   lmp_volatility: number;
   neg_price_hours: number;
+  total_curtailment_mwh: number;
   da_price_range: [number, number];
   hourly_schedule: HourlyRow[];
 }
@@ -72,6 +77,7 @@ export default function PypsaBattery() {
   const [year,        setYear]        = useState(2025);
   const [month,       setMonth]       = useState(7);
   const [windCf,      setWindCf]      = useState(35);
+  const [solarCf,     setSolarCf]     = useState(22);
   const [gasPrice,    setGasPrice]    = useState(350);
   const [dirty, setDirty] = useState(false);
   const [result, setResult] = useState<BatteryResult | null>(null);
@@ -96,7 +102,7 @@ export default function PypsaBattery() {
       year,
       month,
       wind_cf: windCf / 100,
-      solar_cf: 0.22,
+      solar_cf: solarCf / 100,
       gas_price_mmbtu: gasPrice / 100,
     });
   }
@@ -117,7 +123,7 @@ export default function PypsaBattery() {
             Battery Revenue Simulator
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            24-hour multi-period OPF · PyPSA StorageUnit · real ERCOT DA hourly prices · cyclic SOC
+            5-bus zonal OPF (24 × Tier-1 snapshots) · zone LMP captures curtailment &amp; congestion · real ERCOT DA prices · cyclic SOC
           </p>
         </div>
         <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-xs">
@@ -237,6 +243,14 @@ export default function PypsaBattery() {
                 <Slider min={5} max={75} step={1} value={[windCf]}
                   onValueChange={([v]) => { setWindCf(v); setDirty(true); }} />
               </div>
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-muted-foreground">Solar CF</span>
+                  <span className="font-mono text-amber-400">{solarCf}%</span>
+                </div>
+                <Slider min={5} max={50} step={1} value={[solarCf]}
+                  onValueChange={([v]) => { setSolarCf(v); setDirty(true); }} />
+              </div>
             </div>
           </div>
 
@@ -268,7 +282,7 @@ export default function PypsaBattery() {
       {result && !mut.isPending && (
         <>
           {/* KPI strip */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
             {[
               {
                 label: "Daily Arbitrage Rev",
@@ -285,7 +299,7 @@ export default function PypsaBattery() {
               {
                 label: "$/MW-day",
                 value: `$${result.storage_mw > 0 ? (Math.abs(result["daily_revenue_$"])/result.storage_mw).toFixed(0) : "—"}`,
-                sub: "per MW power capacity",
+                sub: "per MW capacity",
                 color: "text-amber-400",
               },
               {
@@ -293,6 +307,18 @@ export default function PypsaBattery() {
                 value: `${result.total_charge_mwh.toFixed(0)} / ${result.total_discharge_mwh.toFixed(0)}`,
                 sub: "MWh in 24h",
                 color: "text-muted-foreground",
+              },
+              {
+                label: "Zone Basis",
+                value: `${result.zone_basis_mwh >= 0 ? "+" : ""}$${result.zone_basis_mwh?.toFixed(2) ?? "0.00"}`,
+                sub: `vs hub DA $${result.avg_da_hub?.toFixed(2) ?? "—"}/MWh`,
+                color: (result.zone_basis_mwh ?? 0) >= 0 ? "text-teal-400" : "text-red-400",
+              },
+              {
+                label: "Curtailment MWh",
+                value: `${(result.total_curtailment_mwh ?? 0).toFixed(0)}`,
+                sub: "total in 24h (OPF)",
+                color: (result.total_curtailment_mwh ?? 0) > 0 ? "text-amber-400" : "text-emerald-400",
               },
               {
                 label: "Neg-Price Hours",
@@ -342,8 +368,10 @@ export default function PypsaBattery() {
                       label={false} />
                     <Line yAxisId="price" type="monotone" dataKey="da_price" name="DA Price"
                       stroke="#f59e0b" strokeWidth={2} dot={false} />
-                    <Line yAxisId="price" type="monotone" dataKey="lmp" name="Bus LMP"
+                    <Line yAxisId="price" type="monotone" dataKey="lmp" name="Zone LMP"
                       stroke="#a855f7" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                    <Line yAxisId="price" type="monotone" dataKey="effective_price" name="Effective (blended)"
+                      stroke="#22d3ee" strokeWidth={1.5} dot={false} strokeDasharray="2 2" />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
