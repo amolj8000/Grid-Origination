@@ -41,6 +41,23 @@ const TECH_LABELS: Record<string, string> = {
   STEAM: "Steam / Coal",
 };
 
+// EIA 860 capacity factors by asset type (ERCOT 2024 actuals)
+const CF_ERCOT: Record<string, number> = {
+  natural_gas: 0.60, wind: 0.38, solar: 0.27,
+  storage: 0.18, nuclear: 0.92, hydro: 0.40, biomass: 0.65,
+};
+
+const FUEL_TABS = [
+  { id: "gas",     label: "Gas",     icon: Flame,    color: "#f97316", assetType: "natural_gas" },
+  { id: "wind",    label: "Wind",    icon: Wind,     color: "#3b82f6", assetType: "wind"        },
+  { id: "solar",   label: "Solar",   icon: Sun,      color: "#f59e0b", assetType: "solar"       },
+  { id: "storage", label: "Storage", icon: Battery,  color: "#8b5cf6", assetType: "storage"     },
+  { id: "nuclear", label: "Nuclear", icon: Zap,      color: "#22c55e", assetType: "nuclear"     },
+  { id: "hydro",   label: "Hydro",   icon: Activity, color: "#14b8a6", assetType: "hydro"       },
+  { id: "biomass", label: "Biomass", icon: AlertTriangle, color: "#84cc16", assetType: "biomass" },
+] as const;
+type FuelTab = typeof FUEL_TABS[number]["id"];
+
 const TOOLTIP_STYLE = {
   backgroundColor: "#0f172a",
   border: "1px solid #1e293b",
@@ -68,6 +85,21 @@ interface Generator {
   ramp_rate_mw_min: string | null;
   fuel_hub: string | null;
   implied_fuel_cost_per_mmb: string | null;
+}
+
+interface EiaGenerator {
+  id: number;
+  name: string;
+  asset_type: string;
+  capacity_mw: string;
+  state: string | null;
+  county: string | null;
+  commissioning_year: number | null;
+  interconnection_node: string | null;
+  pricing_hub_node: string | null;
+  curtailment_score: string | null;
+  price_score: string | null;
+  overall_score: string;
 }
 
 interface MeritOrderUnit {
@@ -154,6 +186,7 @@ export default function GeneratorsPage() {
   const [demandMw, setDemandMw] = useState(18000);
   const [techFilter, setTechFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [fuelTab, setFuelTab] = useState<FuelTab>("gas");
 
   // ── API calls ──────────────────────────────────────────────────────────────
   const { data: meritData, isLoading: loadingMerit } = useQuery<MeritOrderResp>({
@@ -172,6 +205,14 @@ export default function GeneratorsPage() {
     queryKey: ["generators", iso],
     queryFn:  () => fetch(`/api/generators?iso=${iso}&asset_class=THERMAL`).then(r => r.json()),
     staleTime: 60 * 60_000,
+  });
+
+  const activeTabDef = FUEL_TABS.find(t => t.id === fuelTab)!;
+  const { data: eiaFleet = [], isLoading: loadingEia } = useQuery<EiaGenerator[]>({
+    queryKey: ["eia-fleet", iso, activeTabDef.assetType],
+    queryFn:  () => fetch(`/api/generators/eia-fleet?iso=${iso}&asset_type=${activeTabDef.assetType}`).then(r => r.json()),
+    staleTime: 60 * 60_000,
+    enabled: fuelTab !== "gas",
   });
 
   // ── Derived data ───────────────────────────────────────────────────────────
@@ -234,8 +275,8 @@ export default function GeneratorsPage() {
             Generator Stack Intelligence
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            ERCOT thermal fleet — merit order, spark spreads, and heat rate analysis.
-            Sources: EIA Form 860 (design specs), ERCOT NP3-965-ER (startup costs, ramp rates).
+            Full ERCOT generating fleet — merit order dispatch, spark spreads, and EIA 860 plant data by fuel type.
+            Sources: EIA Form 860 (2024), ERCOT NP3-965-ER (startup costs, ramp rates).
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -531,104 +572,186 @@ export default function GeneratorsPage() {
         </div>
       </div>
 
-      {/* Generator Table */}
+      {/* Generator Characteristics — full ERCOT fleet, tabbed by fuel type */}
       <Card className="bg-slate-800/50 border-slate-700/50">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <CardTitle className="text-slate-100 text-sm">Generator Characteristics</CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Technology filter */}
-              {["All", "CCGT", "CT", "STEAM"].map(t => (
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <CardTitle className="text-slate-100 text-sm">Generator Characteristics — ERCOT Fleet</CardTitle>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {fuelTab === "gas"
+                  ? `${tableRows.length} thermal units · EIA 860 + ERCOT NP3-965-ER dispatch parameters`
+                  : `${eiaFleet.filter(g => !search || g.name.toLowerCase().includes(search.toLowerCase())).length} of ${eiaFleet.length} ${activeTabDef.label.toLowerCase()} generators · EIA Form 860 (2024)`}
+              </p>
+            </div>
+            {/* Fuel type tabs */}
+            <div className="flex items-center gap-1 flex-wrap">
+              {FUEL_TABS.map(tab => (
                 <button
-                  key={t}
-                  onClick={() => setTechFilter(t === "All" ? null : t)}
-                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                    (t === "All" && !techFilter) || techFilter === t
-                      ? "bg-teal-600/30 text-teal-300 border border-teal-500/40"
-                      : "text-slate-400 hover:text-slate-200 border border-transparent"
+                  key={tab.id}
+                  onClick={() => { setFuelTab(tab.id); setTechFilter(null); setSearch(""); }}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors border ${
+                    fuelTab === tab.id ? "" : "border-transparent text-slate-400 hover:text-slate-200"
                   }`}
+                  style={fuelTab === tab.id ? {
+                    backgroundColor: `${tab.color}20`,
+                    borderColor: `${tab.color}50`,
+                    color: tab.color,
+                  } : {}}
                 >
-                  {t === "All" ? "All" : TECH_LABELS[t]?.split(" ")[0] ?? t}
+                  <tab.icon className="h-3 w-3" />
+                  {tab.label}
                 </button>
               ))}
-              <input
-                type="text"
-                placeholder="Search plant or operator…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="bg-slate-900/60 border border-slate-600/50 rounded px-3 py-1 text-xs text-slate-200 placeholder-slate-500 w-48 focus:outline-none focus:border-teal-500/50"
-              />
             </div>
           </div>
+
+          {/* Sub-filter row */}
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            {fuelTab === "gas" && ["All", "CCGT", "CT", "STEAM"].map(t => (
+              <button
+                key={t}
+                onClick={() => setTechFilter(t === "All" ? null : t)}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  (t === "All" && !techFilter) || techFilter === t
+                    ? "bg-teal-600/30 text-teal-300 border border-teal-500/40"
+                    : "text-slate-400 hover:text-slate-200 border border-transparent"
+                }`}
+              >
+                {t === "All" ? "All" : TECH_LABELS[t]?.split(" ")[0] ?? t}
+              </button>
+            ))}
+            <input
+              type="text"
+              placeholder="Search plant…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="bg-slate-900/60 border border-slate-600/50 rounded px-3 py-1 text-xs text-slate-200 placeholder-slate-500 w-44 focus:outline-none focus:border-teal-500/50 ml-auto"
+            />
+          </div>
         </CardHeader>
+
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-slate-500 uppercase tracking-wide border-b border-slate-700/50">
-                  <th className="text-left px-4 py-2.5 font-medium">Plant</th>
-                  <th className="text-left px-3 py-2.5 font-medium">Type</th>
-                  <th className="text-right px-3 py-2.5 font-medium">MW</th>
-                  <th className="text-right px-3 py-2.5 font-medium">Heat Rate</th>
-                  <th className="text-right px-3 py-2.5 font-medium">VOM</th>
-                  <th className="text-right px-3 py-2.5 font-medium">Marg. Cost</th>
-                  <th className="text-right px-3 py-2.5 font-medium">Spark Spread</th>
-                  <th className="text-right px-3 py-2.5 font-medium">CO₂ (t/MWh)</th>
-                  <th className="text-right px-3 py-2.5 font-medium">Cold Start</th>
-                  <th className="text-right px-3 py-2.5 font-medium">Ramp</th>
-                  <th className="text-right px-3 py-2.5 font-medium">Year</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.map(g => (
-                  <tr key={g.id} className="border-t border-slate-700/30 hover:bg-slate-700/20">
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium text-slate-200 whitespace-nowrap">{g.plant_name}</div>
-                      <div className="text-slate-500">{g.operator}</div>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border"
-                        style={{ color: TECH_COLORS[g.technology], borderColor: `${TECH_COLORS[g.technology]}40`, backgroundColor: `${TECH_COLORS[g.technology]}18` }}>
-                        {g.technology}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-slate-300">
-                      {parseFloat(g.nameplate_mw).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-slate-300">
-                      {g.design_heat_rate ? `${parseFloat(g.design_heat_rate).toFixed(2)}` : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-slate-400">
-                      ${g.vom_per_mwh ? parseFloat(g.vom_per_mwh).toFixed(2) : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-medium" style={{ color: TECH_COLORS[g.technology] }}>
-                      ${g.mc.toFixed(2)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-semibold">
-                      {g.spark !== null
-                        ? <span className={g.spark > 0 ? "text-green-400" : "text-red-400"}>
-                            {g.spark > 0 ? "+" : ""}{g.spark.toFixed(2)}
-                          </span>
-                        : <span className="text-slate-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-slate-400">
-                      {g.co2_rate_tons_mwh ? parseFloat(g.co2_rate_tons_mwh).toFixed(3) : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-slate-400">
-                      {g.startup_cost_cold ? `$${Math.round(parseFloat(g.startup_cost_cold) / 1000)}k` : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-slate-400">
-                      {g.ramp_rate_mw_min ? `${parseFloat(g.ramp_rate_mw_min).toFixed(1)} MW/m` : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-slate-500">
-                      {g.commissioning_year ?? "—"}
-                    </td>
+            {fuelTab === "gas" ? (
+              /* ── Thermal / Gas: full dispatch parameters ── */
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-slate-500 uppercase tracking-wide border-b border-slate-700/50">
+                    <th className="text-left px-4 py-2.5 font-medium">Plant</th>
+                    <th className="text-left px-3 py-2.5 font-medium">Type</th>
+                    <th className="text-right px-3 py-2.5 font-medium">MW</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Heat Rate</th>
+                    <th className="text-right px-3 py-2.5 font-medium">VOM</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Marg. Cost</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Spark Spread</th>
+                    <th className="text-right px-3 py-2.5 font-medium">CO₂ t/MWh</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Cold Start</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Ramp</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Year</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {tableRows.length === 0 && (
+                </thead>
+                <tbody>
+                  {tableRows.map(g => (
+                    <tr key={g.id} className="border-t border-slate-700/30 hover:bg-slate-700/20">
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium text-slate-200 whitespace-nowrap">{g.plant_name}</div>
+                        <div className="text-slate-500">{g.operator}</div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border"
+                          style={{ color: TECH_COLORS[g.technology], borderColor: `${TECH_COLORS[g.technology]}40`, backgroundColor: `${TECH_COLORS[g.technology]}18` }}>
+                          {g.technology}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-slate-300">{parseFloat(g.nameplate_mw).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-300">{g.design_heat_rate ? parseFloat(g.design_heat_rate).toFixed(2) : "—"}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-400">${g.vom_per_mwh ? parseFloat(g.vom_per_mwh).toFixed(2) : "—"}</td>
+                      <td className="px-3 py-2.5 text-right font-medium" style={{ color: TECH_COLORS[g.technology] }}>${g.mc.toFixed(2)}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold">
+                        {g.spark !== null
+                          ? <span className={g.spark > 0 ? "text-green-400" : "text-red-400"}>{g.spark > 0 ? "+" : ""}{g.spark.toFixed(2)}</span>
+                          : <span className="text-slate-600">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-slate-400">{g.co2_rate_tons_mwh ? parseFloat(g.co2_rate_tons_mwh).toFixed(3) : "—"}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-400">{g.startup_cost_cold ? `$${Math.round(parseFloat(g.startup_cost_cold) / 1000)}k` : "—"}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-400">{g.ramp_rate_mw_min ? `${parseFloat(g.ramp_rate_mw_min).toFixed(1)} MW/m` : "—"}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-500">{g.commissioning_year ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : loadingEia ? (
+              <div className="text-center py-12 text-slate-500 text-sm">Loading {activeTabDef.label} generators…</div>
+            ) : (
+              /* ── Non-thermal: EIA 860 fleet table ── */
+              (() => {
+                const cf = CF_ERCOT[activeTabDef.assetType] ?? 0.30;
+                const filtered = eiaFleet.filter(g =>
+                  !search || g.name.toLowerCase().includes(search.toLowerCase()) ||
+                  (g.county ?? "").toLowerCase().includes(search.toLowerCase())
+                );
+                return (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-slate-500 uppercase tracking-wide border-b border-slate-700/50">
+                        <th className="text-left px-4 py-2.5 font-medium">Plant / Project</th>
+                        <th className="text-right px-3 py-2.5 font-medium">MW</th>
+                        <th className="text-left px-3 py-2.5 font-medium">Node / Hub</th>
+                        <th className="text-left px-3 py-2.5 font-medium">County</th>
+                        <th className="text-right px-3 py-2.5 font-medium">COD Year</th>
+                        <th className="text-right px-3 py-2.5 font-medium">Cap Factor</th>
+                        <th className="text-right px-3 py-2.5 font-medium">Annual GWh</th>
+                        <th className="text-right px-3 py-2.5 font-medium">Curt. Score</th>
+                        <th className="text-right px-3 py-2.5 font-medium">Overall Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(g => {
+                        const mw  = parseFloat(g.capacity_mw);
+                        const gwh = Math.round(mw * cf * 8760 / 1000);
+                        const cs  = g.curtailment_score ? parseFloat(g.curtailment_score) : null;
+                        const os  = parseFloat(g.overall_score);
+                        const node = g.interconnection_node ?? g.pricing_hub_node ?? "—";
+                        return (
+                          <tr key={g.id} className="border-t border-slate-700/30 hover:bg-slate-700/20">
+                            <td className="px-4 py-2.5">
+                              <div className="font-medium text-slate-200 whitespace-nowrap">{g.name}</div>
+                              <div className="text-slate-500 text-[10px]">{g.state ?? "TX"} · EIA 860</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-slate-300 font-medium">{mw.toLocaleString()}</td>
+                            <td className="px-3 py-2.5 text-left">
+                              <span className="text-teal-400 font-mono text-[10px]">{node.length > 18 ? node.slice(0, 18) + "…" : node}</span>
+                            </td>
+                            <td className="px-3 py-2.5 text-left text-slate-400">{g.county ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-right text-slate-400">{g.commissioning_year ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-right text-slate-300">{(cf * 100).toFixed(0)}%</td>
+                            <td className="px-3 py-2.5 text-right text-slate-300">{gwh.toLocaleString()}</td>
+                            <td className="px-3 py-2.5 text-right">
+                              {cs !== null ? (
+                                <span className={cs >= 70 ? "text-green-400 font-medium" : cs >= 50 ? "text-amber-400" : "text-red-400"}>
+                                  {cs.toFixed(0)}
+                                </span>
+                              ) : <span className="text-slate-600">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <span className={os >= 70 ? "text-green-400 font-semibold" : os >= 50 ? "text-amber-400 font-medium" : "text-slate-400"}>
+                                {os.toFixed(1)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()
+            )}
+            {fuelTab === "gas" && tableRows.length === 0 && (
               <div className="text-center py-8 text-slate-500 text-sm">No generators match filter</div>
+            )}
+            {fuelTab !== "gas" && !loadingEia && eiaFleet.length === 0 && (
+              <div className="text-center py-8 text-slate-500 text-sm">No {activeTabDef.label} generators in ERCOT</div>
             )}
           </div>
         </CardContent>
