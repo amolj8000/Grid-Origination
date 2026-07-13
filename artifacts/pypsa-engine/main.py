@@ -601,12 +601,12 @@ def _precompute_aeso_opf():
         logger.warning("Alberta startup OPF failed (non-fatal): %s", e)
 
 
-@app.on_event("startup")
-async def aeso_startup():
-    """Kick off Alberta OPF pre-computation in the background so the port binds immediately."""
-    import asyncio
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _precompute_aeso_opf)
+# Alberta startup OPF disabled — AESO work deferred, enable when needed
+# @app.on_event("startup")
+# async def aeso_startup():
+#     import asyncio
+#     loop = asyncio.get_event_loop()
+#     loop.run_in_executor(None, _precompute_aeso_opf)
 
 
 if __name__ == "__main__":
