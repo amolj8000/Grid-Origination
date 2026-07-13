@@ -15,7 +15,7 @@ paths = [ "/pitch-deck/" ]
 localPort = 18522
 
 [services.development]
-run = "pnpm --filter @workspace/pitch-deck run dev"
+run = "sleep infinity"
 
 [services.production]
 build = [ "pnpm", "--filter", "@workspace/pitch-deck", "run", "build" ]
