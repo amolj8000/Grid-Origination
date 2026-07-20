@@ -220,13 +220,18 @@ def _get_seeded_dates(conn) -> set[datetime.date]:
         return {r[0] for r in cur.fetchall()}
 
 
-def seed_dispatch_full(start_date: datetime.date | None = None) -> None:
+def seed_dispatch_full(
+    start_date: datetime.date | None = None,
+    end_date: datetime.date | None = None,
+) -> None:
     """
-    Pull all ERCOT SCED data from start_date (default START_DATE) to _end_date() and store
+    Pull ERCOT SCED data from start_date to end_date (both inclusive) and store
     hourly aggregates in ercot_hourly_dispatch.  Gap-fill safe: skips
     dates already recorded in ercot_dispatch_seed_log.
+    Defaults: start=START_DATE (2024-01-01), end=yesterday.
     """
     effective_start = start_date or START_DATE
+    effective_end   = end_date   or _end_date()
 
     status = dispatch_seed_status
     status["running"]     = True
@@ -257,7 +262,7 @@ def seed_dispatch_full(start_date: datetime.date | None = None) -> None:
         db_url = os.environ.get("DATABASE_URL")
         conn   = psycopg2.connect(db_url)
 
-        end   = _end_date()
+        end   = effective_end
         already = _get_seeded_dates(conn)
 
         dates_needed = []
