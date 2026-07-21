@@ -103,37 +103,57 @@ def download_zip(doc_id: int) -> io.BytesIO:
 
 # ── Processing ────────────────────────────────────────────────────────────────
 def aggregate_day(csv_bytes: bytes, data_date: datetime.date) -> pl.DataFrame:
-    """Parse raw SCED CSV, aggregate to hourly rows. Pure Polars."""
-    df = pl.read_csv(io.BytesIO(csv_bytes), infer_schema_length=1000)
+    """Parse raw SCED Gen Resource CSV, aggregate to hourly rows. Pure Polars."""
+    df = pl.read_csv(
+        io.BytesIO(csv_bytes),
+        infer_schema_length=10000,
+        ignore_errors=True,
+    )
 
-    # Find timestamp column (varies by file vintage)
-    ts_col = next((c for c in df.columns if "Timestamp" in c or "timestamp" in c), None)
+    # Find timestamp column
+    ts_col = next(
+        (c for c in df.columns if "Timestamp" in c or "timestamp" in c or "Time Stamp" in c),
+        None,
+    )
     if ts_col is None:
         raise ValueError(f"No timestamp column found. Columns: {df.columns}")
 
-    df = df.with_columns(
-        pl.col(ts_col).cast(pl.Utf8).str.to_datetime(format=None, strict=False)
-          .dt.truncate("1h").alias("hour")
-    )
-
-    # Find key columns (handle minor naming variations)
-    def col(candidates):
+    # Find required columns — ERCOT uses spaced names e.g. "Resource Name"
+    def find_col(candidates):
         for c in candidates:
             if c in df.columns:
                 return pl.col(c)
         raise ValueError(f"None of {candidates} found in {df.columns}")
 
+    output_col = find_col([
+        "Telemetered Net Output", "OutputMW", "OUTPUT_MW", "outputMW",
+    ])
+    name_col   = find_col(["Resource Name", "ResourceName", "RESOURCE_NAME"])
+    type_col   = find_col(["Resource Type", "ResourceType", "RESOURCE_TYPE"])
+    hsl_col    = find_col(["HSL", "HSLMw", "HSL_MW"])
+    lsl_col    = find_col(["LSL", "LSLMw", "LSL_MW"])
+    bp_col     = find_col(["Base Point", "BasePointMW", "BASE_POINT_MW"])
+
+    df = df.with_columns(
+        pl.col(ts_col).cast(pl.Utf8).str.to_datetime(format=None, strict=False)
+          .dt.truncate("1h").alias("hour"),
+        output_col.cast(pl.Float64).alias("_output"),
+        hsl_col.cast(pl.Float64).alias("_hsl"),
+        lsl_col.cast(pl.Float64).alias("_lsl"),
+        bp_col.cast(pl.Float64).alias("_bp"),
+    )
+
     agg = df.group_by([
-        col(["ResourceName", "RESOURCE_NAME", "resourceName"]).alias("resource_name"),
-        col(["ResourceType", "RESOURCE_TYPE", "resourceType"]).alias("resource_type"),
+        name_col.alias("resource_name"),
+        type_col.alias("resource_type"),
         "hour",
     ]).agg([
-        col(["OutputMW",    "OUTPUT_MW",    "outputMW"]).mean().alias("avg_mw"),
-        col(["OutputMW",    "OUTPUT_MW",    "outputMW"]).max().alias("max_mw"),
-        col(["HSLMw",       "HSL_MW",       "hslMw"]).mean().alias("hsl"),
-        col(["LSLMw",       "LSL_MW",       "lslMw"]).mean().alias("lsl"),
-        col(["BasePointMW", "BASE_POINT_MW","basePointMW"]).mean().alias("base_point"),
-        col(["OutputMW",    "OUTPUT_MW",    "outputMW"]).count().alias("online_intervals"),
+        pl.col("_output").mean().alias("avg_mw"),
+        pl.col("_output").max().alias("max_mw"),
+        pl.col("_hsl").mean().alias("hsl"),
+        pl.col("_lsl").mean().alias("lsl"),
+        pl.col("_bp").mean().alias("base_point"),
+        pl.col("_output").count().alias("online_intervals"),
     ])
 
     return agg
@@ -178,7 +198,8 @@ def seed_day(conn, data_date: datetime.date) -> int:
 
         with zipfile.ZipFile(zip_buf) as zf:
             for name in zf.namelist():
-                if not name.endswith(".csv"):
+                # Only process the Gen Resource dispatch file
+                if "Gen_Resource_Data" not in name or not name.endswith(".csv"):
                     continue
                 csv_bytes = zf.read(name)
                 try:
