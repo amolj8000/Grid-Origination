@@ -61,7 +61,7 @@ def get_token() -> str:
     resp.raise_for_status()
     j = resp.json()
     _token_cache["token"]   = j.get("access_token") or j.get("id_token")
-    _token_cache["expires"] = time.time() + j.get("expires_in", 3600)
+    _token_cache["expires"] = time.time() + int(j.get("expires_in", 3600))
     return _token_cache["token"]
 
 def ercot_headers() -> dict:
@@ -73,7 +73,7 @@ def ercot_headers() -> dict:
 # ── ERCOT API ─────────────────────────────────────────────────────────────────
 BASE = "https://api.ercot.com/api/public-reports/archive/np3-965-er"
 
-def list_archives(post_date: datetime.date) -> list[str]:
+def list_archives(post_date: datetime.date) -> list[int]:
     """Return docIds published on post_date (data_date + ~60 days)."""
     next_day = post_date + datetime.timedelta(days=1)
     resp = requests.get(BASE, headers=ercot_headers(), params={
@@ -82,15 +82,15 @@ def list_archives(post_date: datetime.date) -> list[str]:
         "size": 1000, "page": 1,
     }, timeout=30)
     resp.raise_for_status()
-    docs = resp.json().get("data", {}).get("docIds", [])
-    return docs if isinstance(docs, list) else []
+    archives = resp.json().get("archives", [])
+    return [item["docId"] for item in archives if "docId" in item]
 
-def download_zip(doc_ids: list[str]) -> bytes:
-    """Download a batch of docIds as a single ZIP (streamed into memory)."""
+def download_zip(doc_id: int) -> io.BytesIO:
+    """Download a single archive by docId (streamed). Returns BytesIO."""
     resp = requests.get(
-        BASE + "/download",
+        BASE,
         headers=ercot_headers(),
-        params={"docIds": ",".join(doc_ids)},
+        params={"download": doc_id},
         timeout=120,
         stream=True,
     )
@@ -168,37 +168,37 @@ def seed_day(conn, data_date: datetime.date) -> int:
 
     log.info(f"  {data_date}: {len(doc_ids)} archive(s), post_date={post_date}")
 
-    try:
-        zip_buf = download_zip(doc_ids)
-    except Exception as e:
-        log.warning(f"  {data_date}: download error — {e}")
-        _log_date(conn, data_date, -1)
-        return -1
-
     all_rows = []
-    with zipfile.ZipFile(zip_buf) as zf:
-        for name in zf.namelist():
-            if not name.endswith(".csv"):
-                continue
-            csv_bytes = zf.read(name)
-            try:
-                agg = aggregate_day(csv_bytes, data_date)
-                all_rows.extend([
-                    (
-                        row["resource_name"],
-                        row["hour"],
-                        RESOURCE_TYPE_MAP.get(str(row["resource_type"]).upper(), "other"),
-                        row["avg_mw"],
-                        row["max_mw"],
-                        row["hsl"],
-                        row["lsl"],
-                        row["base_point"],
-                        int(row["online_intervals"]) if row["online_intervals"] else 0,
-                    )
-                    for row in agg.to_dicts()
-                ])
-            except Exception as e:
-                log.warning(f"  {data_date}: parse error in {name} — {e}")
+    for doc_id in doc_ids:
+        try:
+            zip_buf = download_zip(doc_id)
+        except Exception as e:
+            log.warning(f"  {data_date}: download error (docId={doc_id}) — {e}")
+            continue
+
+        with zipfile.ZipFile(zip_buf) as zf:
+            for name in zf.namelist():
+                if not name.endswith(".csv"):
+                    continue
+                csv_bytes = zf.read(name)
+                try:
+                    agg = aggregate_day(csv_bytes, data_date)
+                    all_rows.extend([
+                        (
+                            row["resource_name"],
+                            row["hour"],
+                            RESOURCE_TYPE_MAP.get(str(row["resource_type"]).upper(), "other"),
+                            row["avg_mw"],
+                            row["max_mw"],
+                            row["hsl"],
+                            row["lsl"],
+                            row["base_point"],
+                            int(row["online_intervals"]) if row["online_intervals"] else 0,
+                        )
+                        for row in agg.to_dicts()
+                    ])
+                except Exception as e:
+                    log.warning(f"  {data_date}: parse error in {name} — {e}")
 
     if not all_rows:
         _log_date(conn, data_date, 0)
