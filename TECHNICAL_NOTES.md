@@ -166,6 +166,34 @@ HiGHS doesn't raise exception on infeasible OPF — returns silently.
 Detection: check `net.buses_t.marginal_price.empty` — if True, solve failed.
 Fix: add "emergency peaker" generators at every bus (very high cost, unlimited capacity) — prevents infeasibility, shows very high LMPs instead.
 
+### 5a. LMP / Nodal Pricing Methodology — What PyPSA Computes vs What ERCOT Publishes
+
+**This is the single most important distinction to keep straight, and the easiest to get wrong when explaining basis risk to the deal team. PyPSA prices and ERCOT published prices are two different things and must never be conflated.**
+
+**How PyPSA computes bus-level LMP (`network.py::run_opf`, `aeso_network.py::run_opf`):**
+PyPSA solves a linearized DC optimal power flow (`n.optimize(solver_name="highs")`) that minimizes total generation cost (`Σ dispatch_MW × marginal_cost`) subject to nodal power balance, generator capacity limits (`p_nom × p_max_pu`), and line thermal limits (`s_nom`). The **LMP at each bus is read directly off `n.buses_t.marginal_price`** — this is the KKT dual variable (shadow price) of that bus's power-balance constraint. Code: `float(n.buses_t.marginal_price.get(bus_id, ...))`, rounded to 2 dp (ERCOT) / 4 dp (AESO).
+
+**So PyPSA's LMP *is* the textbook decomposition** `LMP = energy (system λ) + congestion (Σ shift_factor × constraint shadow price)`. The congestion component is not computed by hand — it falls out of the LP duals automatically when a line constraint binds. This is exactly the "shift factors + shadow prices" mechanism ChatGPT described, and it's correct **for the congestion component only**.
+
+**What drives the numbers (inputs, `network.py`):**
+- **Merit order** = generator `marginal_cost`. Gas is heat-rate-derived: `HEAT_RATE_CC/1000 × gas_price` (CC 7,500; CT 10,000 Btu/kWh). Renewables/nuclear/hydro/storage use `BASE_MC` (wind/solar = $0, nuclear $5, hydro $2, peaker $499). Scarcity peaker cost = VOLL when passed.
+- **Bus loads** (Tier 2) assigned in priority order: (1) **PTDF shift factors × EIA zone loads** (`ercot_bus_shift_factors` table) — `load_mw[bus] = zone_load_mw[eia_zone] × shift_factor[bus]`; (2) capacity-weighted fallback within LZ zone.
+- **Historical mode:** when `simulation_datetime` is passed, real EIA-930 zone loads, fuel-mix-derived wind/solar CFs, and Henry Hub gas price override the synthetic params. Otherwise synthetic.
+- **Line susceptance** (`x_pu`) sets the B-matrix that determines shift factors — a wrong impedance silently produces wrong congestion prices.
+
+**What PyPSA does NOT model (why it ≠ ERCOT published prices):**
+- **No price adders.** ERCOT RT LMPs exclude RT price adders (RTORPA/RTORDPA); the *settlement point prices* you seed (NP6-905) can include them. PyPSA has neither.
+- **No settlement-point ↔ bus heuristic mapping.** ERCOT maps electrical-bus LMPs to published settlement points via heuristic pricing associations (see "Electrical Bus Mapping for Heuristic Pricing"). PyPSA emits raw modeled-bus prices with no such layer.
+- **Reduced network.** Tier 2 is ~340 real 345 kV buses + k-NN graph; ERCOT's production model has thousands of buses. Topology, contingencies (N-1), and constraints differ.
+- **Different objective.** ERCOT's SCED uses a two-step LMP methodology with its own constraint set; PyPSA is a single-period cost-minimizing DC OPF.
+
+**Practical rule for the platform:**
+- **Historical nodal prices (seeded from NP4-190 DA / NP6-905 RT)** = ground truth. Use for all customer-facing scoring, capture price, basis/congestion analysis, NPV inputs.
+- **PyPSA LMPs** = forward-looking / counterfactual scenarios only (new line built, plant retires, load growth, curtailment sweeps). ERCOT historical prices can *calibrate/validate* PyPSA but PyPSA output must never be presented as actuals.
+- When a page shows both, label clearly which is modeled vs actual. Basis risk shown to the deal team should always be derived from seeded historical nodal-vs-hub spreads, not PyPSA.
+
+**Reference table worth seeding:** NP4-160-SG (Settlement Points List & Electrical Bus Mapping) gives the authoritative ~1,100 settlement-point universe and their bus mapping — useful for joining PyPSA buses to the seeded price nodes. Note it is the *market settlement-point* universe, not a dump of every physical network bus.
+
 ---
 
 ## 6. Candidate Rankings — 8-Dimension Scoring, 6 Investment Objectives
