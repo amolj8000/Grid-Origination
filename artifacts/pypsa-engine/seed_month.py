@@ -105,7 +105,16 @@ def main():
 
     for i, date in enumerate(dates_needed, 1):
         t0 = time.time()
-        n  = _seed_one_day(api, conn, date)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_seed_one_day, api, conn, date)
+                n = fut.result(timeout=180)  # 3 min total cap (API 90s + processing)
+        except concurrent.futures.TimeoutError:
+            logger.warning("[%d/%d] %s — total timeout (3 min) — skipping", i, len(dates_needed), date)
+            n = -1
+        except Exception as e:
+            logger.warning("[%d/%d] %s — unexpected error: %s — skipping", i, len(dates_needed), date, e)
+            n = -1
         elapsed = time.time() - t0
 
         if n >= 0:
