@@ -9,31 +9,45 @@ Covers all ~1,215 generation resources in ERCOT with 5-minute dispatch intervals
 
 ## Source & auth
 - Report: ERCOT Public API — `np3-965-er` archive endpoint
-- Auth: `ErcotAPI(username=ERCOT_USERNAME, password=ERCOT_PASSWORD, public_subscription_key=ERCOT_SUBSCRIPTION_KEY)`
-- gridstatus method: `api.get_60_day_sced_disclosure(date="YYYY-MM-DD", end="YYYY-MM-DD+1")`
-- 60-day posting offset handled internally — pass operational date directly
-- ~17 seconds per day; 852 days total = ~4 hours for full Jan 2024–May 2026 history
+- Auth: Bearer token via ERCOT B2C ROPC flow (ERCOT_CLIENT_ID, ERCOT_USERNAME, ERCOT_PASSWORD, ERCOT_SUBSCRIPTION_KEY)
+- CDR misdownload requires NO auth: `https://www.ercot.com/misdownload/servlets/mirDownload?mimic_duns=000000000&doclookupId=<id>`
 
-## Key data in each row
-- `sced_gen_resource`: 5-min dispatch per resource with `SCED1 Offer Curve` = `[[mw, price], ...]` segments (the real merit order bid)
-- Offer curve boundary markers: -250 and 5000 are ERCOT sentinels (filter out for real prices)
-- Resource types: WIND, PVGR (solar), PWRSTR (storage), CCGT90/SCGT90/SCLE90 (gas), CLLIG (coal), NUC, HYDRO
+## ERCOT Archive API quirks (critical)
+- Archive listing URL: `https://api.ercot.com/api/public-reports/archive/np3-965-er`
+- Response key is `archives` NOT `data` (gridstatus source confirmed)
+- docId lives in `archive["_links"]["endpoint"]["href"]` — a CDR misdownload URL ending in `doclookupId=XXXXXXX`
+- `postDatetime` field is the ERCOT posting timestamp (~60 days after operational date)
+- ERCOT posts archives **59–62 days** after operational date (not exactly 60) — use a [+58, +63] window
+- When using a wide window, always verify: `abs((post_dt - expected_post).days) <= 3` to avoid picking up a neighboring date's archive for genuinely-missing days
+- Some operational dates have no archive at all (e.g. 2026-03-04) — this is a genuine ERCOT gap, not a seeder bug
+
+## Seeder: seed_month_v2.py (fast CDR+Polars approach)
+- Location: `artifacts/pypsa-engine/seed_month_v2.py`
+- Usage: `.venv/bin/python seed_month_v2.py <YEAR> <MONTH>`
+- Each day: 1 listing API call (with 2s sleep) + CDR download (~53MB ZIP) + polars parse + psycopg2 insert
+- ~20s per day; 30 days ≈ ~10 minutes per month
+- Polars requires `infer_schema_length=0` for the wide SCED CSV schema
+- `_get_month_doc_ids` batch approach returns empty because it was reading `data` key — use per-day `_get_doc_id` instead
+- Token refresh every 50 min (ERCOT tokens expire at ~60 min)
+
+## Why CDR+Polars vs gridstatus
+- gridstatus `get_60_day_sced_disclosure` hangs indefinitely on internal pandas processing for large dates
+- CDR misdownload (no auth) + polars is 317K rows in 2.1s vs gridstatus hanging for hours
+- Per-day listing calls with 2s sleep prevent HTTP 429 rate limiting
 
 ## DB tables
-- `ercot_hourly_dispatch` — PRIMARY KEY (resource_name, hour); stores avg/max MW, HSL, LSL, base_point, online_intervals, offer_price_min/max, offer_mw_total, startup_cold/hot
-- `ercot_dispatch_seed_log` — one row per operational date; use for gap-fill (skip already-seeded days)
+- `ercot_hourly_dispatch` — PRIMARY KEY (resource_name, hour); stores avg/max MW, HSL, LSL, base_point, online_intervals, offer_price_min/max, offer_mw_total, startup_cold/hot; NO seed_date column
+- `ercot_dispatch_seed_log` — one row per operational date (ON CONFLICT seed_date); use for gap-fill (skip already-seeded days)
 
-## Seeder
-- Python script: `scripts/src/seed-ercot-dispatch.py`
-- npm script: `pnpm --filter @workspace/scripts run seed-ercot-dispatch`
-- Admin endpoint: `POST /pypsa/admin/seed-dispatch?key=<ERCOT_PASSWORD>`
-- Status: `GET /pypsa/admin/seed-dispatch-status`
-- Module: `artifacts/pypsa-engine/dispatch_seeder.py`
+## Data status
+- Jan 2024 – May 2026: ~26M rows across 29 months
+- December 2025: only 4 days seeded (existing gap)
+- May 2026: 21 days (embargoed — 60-day lag means June 2026 available ~late August 2026)
 
-## API endpoints (api-server)
+## Admin endpoints (api-server)
 - `GET /api/ercot/dispatch/seed-status` — row counts, resources, date range
 - `GET /api/ercot/dispatch/dates` — list of seeded operational dates
-- `GET /api/ercot/dispatch/supply-stack?date=YYYY-MM-DD` — merit order for one day (1,095 rows)
+- `GET /api/ercot/dispatch/supply-stack?date=YYYY-MM-DD` — merit order for one day
 - `GET /api/ercot/dispatch/summary?months=N` — monthly generation by fuel type
 - `GET /api/ercot/dispatch/capacity-factors?granularity=alltime|monthly` — CF by fuel type
 
@@ -50,4 +64,4 @@ Covers all ~1,215 generation resources in ERCOT with 5-minute dispatch intervals
 - Solar: 85% CF (avg when online — winter daytime)
 - Storage: 4% CF (arbitrage/ancillary only)
 
-**Why:** Real offer curves confirm the actual ERCOT merit order — gas peakers set the marginal price, nuclear/wind are must-run, storage is pure arbitrage. Invaluable for spark spread, PPA pricing, and supply stack visualization.
+**Why:** Real offer curves confirm the actual ERCOT merit order — gas peakers set the marginal price, nuclear/wind are must-run, storage is pure arbitrage.

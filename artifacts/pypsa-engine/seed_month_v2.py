@@ -92,13 +92,18 @@ def _get_doc_id(token: str, sub_key: str, date: datetime.date) -> str | None:
     The download link is in archive["_links"]["endpoint"]["href"] which
     is a CDR misdownload URL ending in doclookupId=XXXXXXX.
     """
-    post_date = date + datetime.timedelta(days=60)
+    # ERCOT posts archives 59-62 days after the operational date (not exactly 60).
+    # Use a [+58, +63] window to catch early/late posts, but then verify the
+    # returned archive's postDatetime is within ±3 days of op_date+60 to avoid
+    # accidentally picking up a neighboring date's archive when a date is missing.
+    post_from = date + datetime.timedelta(days=58)
+    post_to   = date + datetime.timedelta(days=63)
     for attempt in range(3):
         resp = requests.get(
             ERCOT_ARCHIVE_URL,
             params={
-                "postDatetimeFrom": post_date.strftime("%Y-%m-%dT00:00:00"),
-                "postDatetimeTo":   (post_date + datetime.timedelta(days=1)).strftime("%Y-%m-%dT00:00:00"),
+                "postDatetimeFrom": post_from.strftime("%Y-%m-%dT00:00:00"),
+                "postDatetimeTo":   post_to.strftime("%Y-%m-%dT00:00:00"),
                 "size": 10,
                 "page": 1,
             },
@@ -121,13 +126,27 @@ def _get_doc_id(token: str, sub_key: str, date: datetime.date) -> str | None:
         archives = body.get("archives", body.get("data", []))
         if not archives:
             return None
-        entry = archives[0]
-        # docId lives in the CDR misdownload href: ...doclookupId=XXXXXXX
-        href = (entry.get("_links", {}).get("endpoint", {}).get("href", ""))
-        if "doclookupId=" in href:
-            return href.split("doclookupId=")[-1]
-        # fallback: direct docId field
-        return str(entry.get("docId", "")) or None
+
+        # The window may span multiple dates; pick only the archive whose
+        # postDatetime corresponds to THIS operational date (within ±3 days).
+        expected_post = date + datetime.timedelta(days=60)
+        for entry in archives:
+            post_str = entry.get("postDatetime", "")
+            if post_str:
+                try:
+                    post_dt = datetime.date.fromisoformat(post_str[:10])
+                    if abs((post_dt - expected_post).days) > 3:
+                        continue   # belongs to a different operational date
+                except ValueError:
+                    pass
+            href = (entry.get("_links", {}).get("endpoint", {}).get("href", ""))
+            if "doclookupId=" in href:
+                return href.split("doclookupId=")[-1]
+            doc_id = str(entry.get("docId", ""))
+            if doc_id:
+                return doc_id
+
+        return None   # no archive within ±3 days of expected post date
     return None
 
 
