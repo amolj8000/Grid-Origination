@@ -37,6 +37,7 @@ dispatch_hourly_agg AS (
         SUM(d.avg_mw) AS sum_gen
     FROM ercot_hourly_dispatch d
     WHERE d.avg_mw > 0
+      AND d.hour >= '2024-12-31'::timestamptz   -- ercot_node_prices starts 2025-01; drop earlier dispatch
     GROUP BY yr, mo, dy, chi_hr, d.resource_name, d.resource_type
 ),
 
